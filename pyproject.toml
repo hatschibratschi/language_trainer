@@ -1,0 +1,28 @@
+[project]
+name = "parla"
+version = "0.1.0"
+description = "Local LLM language trainer (German → Italian) using Ollama"
+authors = [
+    { name = "hatschi bratschi", email = "hatschibratschi@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "gradio>=6.31.0",
+    "ollama>=0.6.3",
+    "pydantic>=2.14.3",
+]
+
+[project.scripts]
+parla = "parla.app:main"
+
+[build-system]
+requires = ["uv_build>=0.13.6,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
+
+[tool.uv.build-backend]
+module-root = ""
