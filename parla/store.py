@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from contextlib import closing
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from parla.tutor import TutorTurn
@@ -41,6 +41,27 @@ CREATE TABLE IF NOT EXISTS conversations (
 
 
 DEFAULT_LIST = "Standard"
+BOXES = 6  # Leitner boxes ("Fächer") of the vocabulary trainer
+
+
+def clamp_box(value, default: int = 1) -> int:
+    box = _to_int(value)
+    return default if box is None else max(1, min(BOXES, box))
+
+
+def _to_int(value) -> int | None:
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+@dataclass
+class EditResult:
+    updated: int = 0
+    added: int = 0
+    deleted: int = 0
+    errors: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -128,14 +149,96 @@ class Store:
 
     # --- vocabulary ------------------------------------------------------
     def add_vocab(
-        self, user: str, items: list[tuple[str, str]], list_name: str = DEFAULT_LIST
-    ) -> None:
-        """A word is stored once per user; adding it again keeps the existing entry and list."""
+        self, user: str, items: list[tuple[str, str]], list_name: str = DEFAULT_LIST, box: int = 1
+    ) -> int:
+        """A word is stored once per user; adding it again keeps the existing entry and list.
+        Returns how many words were new."""
         with closing(self._connect()) as db, db:
+            before = db.total_changes
             db.executemany(
-                "INSERT OR IGNORE INTO vocab(user, word, translation, list) VALUES (?, ?, ?, ?)",
-                [(user, w, t, list_name) for w, t in items if w],
+                "INSERT OR IGNORE INTO vocab(user, word, translation, list, box) VALUES (?, ?, ?, ?, ?)",
+                [(user, w, t, list_name or DEFAULT_LIST, clamp_box(box)) for w, t in items if w],
             )
+            return db.total_changes - before
+
+    def find_vocab(self, user: str, words: list[str]) -> dict[str, tuple[str, int]]:
+        """word -> (list, box) for the given words that the user already has."""
+        with closing(self._connect()) as db:
+            return {
+                w: (lst, box)
+                for w, lst, box in db.execute(
+                    f"SELECT word, list, box FROM vocab WHERE user = ? AND word IN ({','.join('?' * len(words))})",
+                    (user, *words),
+                )
+            }
+
+    # --- list editor -----------------------------------------------------
+    def edit_rows(self, user: str, list_name: str | None = None) -> list[list]:
+        """[id, word, translation, list, box], newest first; all lists if list_name is None."""
+        sql = "SELECT rowid, word, translation, list, box FROM vocab WHERE user = ?"
+        args: tuple = (user,)
+        if list_name is not None:
+            sql, args = sql + " AND list = ?", (user, list_name)
+        with closing(self._connect()) as db:
+            return [list(r) for r in db.execute(sql + " ORDER BY rowid DESC", args)]
+
+    def apply_edits(
+        self, user: str, original_ids: list[int], rows: list[list], default_list: str = DEFAULT_LIST
+    ) -> EditResult:
+        """Save an edited table of edit_rows(). Rows keep their id; a row with an empty word
+        or whose id is gone is deleted; a row without id is a new word."""
+        result = EditResult()
+        kept: set[int] = set()
+        with closing(self._connect()) as db, db:
+            for row in rows:
+                row = [*row, None, None, None, None, None][:5]
+                rid, word, translation, list_name, box = row
+                word, translation = str(word or "").strip(), str(translation or "").strip()
+                list_name = str(list_name or "").strip() or default_list
+                rid = _to_int(rid)
+                if rid is not None and rid in original_ids:
+                    if not word:
+                        continue  # deleted below
+                    kept.add(rid)
+                    old = db.execute(
+                        "SELECT word, translation, list, box FROM vocab WHERE rowid = ? AND user = ?",
+                        (rid, user),
+                    ).fetchone()
+                    if old is None:
+                        continue
+                    new = (word, translation, list_name, clamp_box(box, old[3]))
+                    if new == tuple(old):
+                        continue
+                    try:
+                        db.execute(
+                            "UPDATE vocab SET word = ?, translation = ?, list = ?, box = ?"
+                            " WHERE rowid = ? AND user = ?",
+                            (*new, rid, user),
+                        )
+                        result.updated += 1
+                    except sqlite3.IntegrityError:
+                        result.errors.append(f"„{word}“ gibt es schon – nicht umbenannt.")
+                elif word:
+                    cur = db.execute(
+                        "INSERT OR IGNORE INTO vocab(user, word, translation, list, box)"
+                        " VALUES (?, ?, ?, ?, ?)",
+                        (user, word, translation, list_name, clamp_box(box)),
+                    )
+                    if cur.rowcount:
+                        result.added += 1
+                    else:
+                        result.errors.append(f"„{word}“ gibt es schon – nicht hinzugefügt.")
+            gone = [i for i in original_ids if i not in kept]
+            db.executemany("DELETE FROM vocab WHERE rowid = ? AND user = ?", [(i, user) for i in gone])
+            result.deleted = len(gone)
+        return result
+
+    def rename_list(self, user: str, old: str, new: str) -> int:
+        """Rename a list (or merge it into an existing one); returns how many words moved."""
+        with closing(self._connect()) as db, db:
+            return db.execute(
+                "UPDATE vocab SET list = ? WHERE user = ? AND list = ?", (new, user, old)
+            ).rowcount
 
     def vocab(self, user: str, list_name: str | None = None) -> list[list[str]]:
         """Newest first; all lists if list_name is None."""

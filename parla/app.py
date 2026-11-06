@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import os
+import re
 from functools import cache
 from pathlib import Path
 
@@ -20,9 +21,10 @@ from parla.config import (
     SCENARIOS,
     USERS,
 )
-from parla import speech
+from parla import lookup, speech
 from parla.render import CSS, render_chat
-from parla.store import DEFAULT_LIST, Settings, Store
+from parla.shortcuts import SHORTCUTS_HELP, SHORTCUTS_JS
+from parla.store import BOXES, DEFAULT_LIST, Settings, Store
 from parla.trainer import ROUND_SIZE, box_counts, next_box, pick_round
 from parla.tutor import START_TOKEN, Tutor, list_models, pick_default_model
 
@@ -148,11 +150,11 @@ def trainer_cards(user: str, list_name: str):
 
 def card_html(prompt: str, answer: str | None, note: str) -> str:
     answer_html = (
-        f'<div class="parla-card-answer">🇮🇹 {html.escape(answer)}</div>' if answer is not None else ""
+        f'<div class="parla-card-answer">{html.escape(answer)}</div>' if answer is not None else ""
     )
     return (
         f'<div class="parla-card"><div class="parla-card-note">{note}</div>'
-        f'<div class="parla-card-prompt">🇩🇪 {html.escape(prompt)}</div>{answer_html}</div>'
+        f'<div class="parla-card-prompt">{html.escape(prompt)}</div>{answer_html}</div>'
     )
 
 
@@ -222,6 +224,168 @@ def trainer_answer(session: dict, t: dict, known: bool):
     return trainer_view(t, user)
 
 
+# --- refreshing the list pickers -----------------------------------------------
+
+# Labels of the trainer boxes when saving looked-up words: the box is the difficulty.
+BOX_CHOICES = [
+    ("1 · neu / schwer", 1), ("2", 2), ("3", 3), ("4", 4), ("5", 5), ("6 · sitzt sicher", 6)
+][:BOXES]
+
+
+SORT_COLUMNS = {"Hinzugefügt": 0, "Italienisch": 1, "Deutsch": 2, "Liste": 3, "Fach": 4}
+# Leading articles are ignored when sorting words, so "la casa" sorts under c.
+_ARTICLE = re.compile(r"^(il|lo|la|i|gli|le|un|uno|una|der|die|das|ein|eine)\s+|^(l|un)['’]\s*", re.I)
+
+
+def sort_key(row: list, col: int):
+    value = row[col]
+    if col in (0, 4):
+        return (0, value or 0)
+    text = str(value or "").strip()
+    if col in (1, 2):
+        text = _ARTICLE.sub("", text)
+    return (0, text.casefold())
+
+
+def filter_rows(rows: list[list], query: str, sort: str, descending: bool) -> list[list]:
+    """Search in word, translation and list (case-insensitive), then sort by a column."""
+    q = (query or "").strip().casefold()
+    if q:
+        rows = [r for r in rows if any(q in str(v or "").casefold() for v in r[1:4])]
+    col = SORT_COLUMNS.get(sort, 0)
+    return sorted(rows, key=lambda r: sort_key(r, col), reverse=bool(descending))
+
+
+def editor_view(user: str | None, list_name: str, query: str = "", sort: str = "Hinzugefügt",
+                descending: bool = True):
+    """Outputs: editor table, ids of its rows (to detect edits and deletions)."""
+    if not user:
+        return [], []
+    rows = get_store().edit_rows(user, None if list_name == ALL_LISTS else list_name)
+    rows = filter_rows(rows, query, sort, descending)
+    return rows, [r[0] for r in rows]
+
+
+def refresh_lists(session: dict, t: dict, ed_list: str, query: str = "", sort: str = "Hinzugefügt",
+                  descending: bool = True):
+    """After words were added, edited or moved: update every list picker and table.
+    Outputs: session, chat list + table, trainer list + trainer outputs, lookup list,
+    editor list + table + ids."""
+    user = session.get("user")
+    choices = list_choices(user) if user else [ALL_LISTS]
+    if session.get("vocab_list", ALL_LISTS) not in choices:
+        session["vocab_list"] = ALL_LISTS
+    if t["list"] not in choices:
+        t = new_trainer()
+    if ed_list not in choices:
+        ed_list = ALL_LISTS
+    return (
+        session,
+        gr.update(choices=choices, value=session.get("vocab_list", ALL_LISTS)),
+        vocab_rows(session),
+        gr.update(choices=choices, value=t["list"]),
+        *trainer_view(t, user),
+        gr.update(choices=choices[1:]),
+        gr.update(choices=choices, value=ed_list),
+        *editor_view(user, ed_list, query, sort, descending),
+    )
+
+
+# --- dictionary lookup ---------------------------------------------------------
+
+
+def lookup_search(session: dict, model: str, text: str):
+    """Outputs: results table (Markdown), word picker, found [word, translation] pairs."""
+    queries = lookup.split_queries(text)
+    if not queries:
+        raise gr.Error("Bitte ein oder mehrere Wörter eingeben (getrennt durch Komma).")
+    if not model:
+        raise gr.Error("Kein Ollama-Modell gefunden. Läuft Ollama?")
+    try:
+        entries = lookup.lookup(model, PAIR, queries)
+    except ValueError as err:
+        raise gr.Error(str(err)) from err
+    except Exception as err:  # noqa: BLE001
+        raise gr.Error(f"Fehler beim Aufruf von Ollama: {err}") from err
+    if not entries:
+        return "Nichts gefunden.", gr.update(choices=[], value=[]), []
+
+    words = [s.word for e in entries for s in e.senses]
+    known = get_store().find_vocab(session["user"], words) if session.get("user") else {}
+    md = ["| | Italienisch | Deutsch | Niveau | Beispiel |", "|---|---|---|---|---|"]
+    found, choices, preselect = [], [], []
+    for e in entries:
+        md.append(f"| **🔎 {_md(e.query)}** | | | | |")
+        for k, sense in enumerate(e.senses):
+            idx = len(found)
+            found.append([sense.word, sense.translation])
+            where = known.get(sense.word)
+            have = f" ✔︎ *schon in {_md(where[0])}, Fach {where[1]}*" if where else ""
+            md.append(
+                f"| | **{_md(sense.word)}**{have} | {_md(sense.translation)} | {sense.level}"
+                f" | *{_md(sense.example)}* |"
+            )
+            choices.append((f"{sense.word} → {sense.translation} ({sense.level})", idx))
+            if k == 0 and not where:
+                preselect.append(idx)  # the most common meaning
+    return "\n".join(md), gr.update(choices=choices, value=preselect), found
+
+
+def _md(text: str) -> str:
+    """Escape text for a Markdown table cell."""
+    return html.escape(text or "").replace("|", "\\|").replace("\n", " ")
+
+
+def lookup_save(session: dict, found: list, picked: list, list_name: str, box):
+    user = session.get("user")
+    if not user:
+        raise gr.Error("Bitte zuerst einen Lernenden wählen.")
+    items = [tuple(found[i]) for i in picked or [] if 0 <= int(i) < len(found)]
+    if not items:
+        raise gr.Error("Bitte mindestens ein Wort ankreuzen.")
+    list_name = (list_name or "").strip() or DEFAULT_LIST
+    if list_name == ALL_LISTS:
+        raise gr.Error(f"„{ALL_LISTS}“ ist keine Liste – bitte eine Liste wählen.")
+    added = get_store().add_vocab(user, items, list_name, int(box or 1))
+    skipped = len(items) - added
+    msg = f"{added} Wort/Wörter in „{list_name}“ gespeichert (Fach {box})."
+    if skipped:
+        msg += f" {skipped} gab es schon – unverändert (ändern unter „✏️ Listen bearbeiten“)."
+    gr.Info(msg)
+    return gr.update(value=[])
+
+
+# --- list editor -----------------------------------------------------------------
+
+
+def editor_save(session: dict, ed_list: str, ids: list, rows):
+    user = session.get("user")
+    if not user:
+        raise gr.Error("Bitte zuerst einen Lernenden wählen.")
+    rows = rows.values.tolist() if hasattr(rows, "values") else (rows or [])
+    default = DEFAULT_LIST if ed_list == ALL_LISTS else ed_list
+    r = get_store().apply_edits(user, list(ids or []), rows, default)
+    msg = f"Gespeichert: {r.updated} geändert, {r.added} neu, {r.deleted} gelöscht."
+    for err in r.errors:
+        gr.Warning(err)
+    gr.Info(msg)
+
+
+def editor_rename(session: dict, ed_list: str, new_name: str):
+    user = session.get("user")
+    new_name = (new_name or "").strip()
+    if not user:
+        raise gr.Error("Bitte zuerst einen Lernenden wählen.")
+    if ed_list == ALL_LISTS:
+        raise gr.Error("Bitte oben eine einzelne Liste wählen.")
+    if not new_name or new_name == ALL_LISTS:
+        raise gr.Error("Bitte einen neuen Namen eingeben.")
+    merged = new_name in get_store().vocab_lists(user)
+    n = get_store().rename_list(user, ed_list, new_name)
+    gr.Info(f"{n} Wörter " + (f"zu „{new_name}“ verschoben." if merged else f"in „{new_name}“ umbenannt."))
+    return gr.update(choices=list_choices(user), value=new_name), ""
+
+
 # --- conversation ------------------------------------------------------------
 
 
@@ -252,8 +416,9 @@ def send_message(text, session, model, level, scenario_key, expand, voice=False)
     if not text:
         yield "", session, *chat_view(session, expand)
         return
-    session["history"].append({"role": "user", "content": text})
-    session["entries"].append({"role": "user", "text": text, **({"voice": True} if voice else {})})
+    voice_flag = {"voice": True} if voice else {}
+    session["history"].append({"role": "user", "content": text, **voice_flag})
+    session["entries"].append({"role": "user", "text": text, **voice_flag})
     # Show the learner's message immediately while the model is thinking.
     yield "", session, *chat_view(session, expand)
     try:
@@ -270,13 +435,20 @@ def send_message(text, session, model, level, scenario_key, expand, voice=False)
 # --- voice ---------------------------------------------------------------------
 
 
+def last_reply(session: dict) -> str | None:
+    for e in reversed(session["entries"]):
+        if e["role"] == "assistant":
+            return e["turn"].reply
+    return None
+
+
 def voice_message(audio, session, model, level, scenario_key, expand):
     """Push-to-talk: transcribe the recording, then send it like a typed message."""
     if not audio:
         yield "", session, *chat_view(session, expand)
         return
     try:
-        text = speech.transcribe(audio, PAIR.stt_language)
+        text = speech.transcribe(audio, PAIR.stt_language, last_reply(session))
     except speech.SpeechError as err:
         raise gr.Error(str(err)) from err
     if not text:
@@ -301,10 +473,7 @@ def speak_reply(session: dict, speak: bool, slow: bool):
 
 def speak_last(session: dict, slow: bool):
     """🔊 button: read the last tutor reply again."""
-    for e in reversed(session["entries"]):
-        if e["role"] == "assistant":
-            session["unspoken"] = e["turn"].reply
-            break
+    session["unspoken"] = last_reply(session)
     return speak_reply(session, True, slow)
 
 
@@ -339,13 +508,14 @@ def build_app() -> gr.Blocks:
                         )
 
                     with gr.Column(scale=3):
-                        chatbot = gr.Chatbot(height=560, label="Gespräch")
+                        chatbot = gr.Chatbot(height=560, label="Gespräch", elem_id="parla-chat")
                         with gr.Row():
                             msg = gr.Textbox(
                                 placeholder="Scrivi in italiano… (Enter zum Senden)",
                                 show_label=False,
                                 scale=5,
                                 autofocus=True,
+                                elem_id="parla-msg",
                             )
                             send = gr.Button("Senden", variant="primary", scale=1)
                         with gr.Row(equal_height=True):
@@ -356,6 +526,7 @@ def build_app() -> gr.Blocks:
                                 label="🎙️ Sprechen (Italienisch)",
                                 editable=False,
                                 scale=3,
+                                elem_id="parla-mic",
                             )
                             with gr.Column(scale=2, min_width=160):
                                 tutor_audio = gr.Audio(
@@ -366,19 +537,19 @@ def build_app() -> gr.Blocks:
                                     editable=False,
                                     buttons=[],
                                 )
-                                replay = gr.Button("🔊 Nochmal anhören", size="sm")
+                                replay = gr.Button("🔊 Nochmal anhören", size="sm", elem_id="parla-replay")
 
             with gr.Tab("🗂️ Vokabeltrainer"):
                 trainer = gr.State(new_trainer())
                 with gr.Row():
                     tr_list = gr.Dropdown([ALL_LISTS], value=ALL_LISTS, label="Liste", scale=2)
-                    tr_start = gr.Button(f"▶️ Neue Runde ({ROUND_SIZE} Wörter)", variant="primary", scale=1)
+                    tr_start = gr.Button(f"▶️ Neue Runde ({ROUND_SIZE} Wörter)", variant="primary", scale=1, elem_id="parla-start")
                 tr_stats = gr.Markdown()
                 tr_card = gr.HTML(card_html("", None, ""))
                 with gr.Row():
-                    tr_reveal = gr.Button("👀 Aufdecken", variant="primary", visible=False)
-                    tr_known = gr.Button("✅ Gewusst", variant="primary", visible=False)
-                    tr_unknown = gr.Button("❌ Nicht gewusst", variant="stop", visible=False)
+                    tr_reveal = gr.Button("👀 Aufdecken", variant="primary", visible=False, elem_id="parla-reveal")
+                    tr_known = gr.Button("✅ Gewusst", variant="primary", visible=False, elem_id="parla-known")
+                    tr_unknown = gr.Button("❌ Nicht gewusst", variant="stop", visible=False, elem_id="parla-unknown")
                 tr_missed = gr.Dataframe(
                     headers=["Deutsch", "Italienisch"],
                     value=[],
@@ -387,6 +558,71 @@ def build_app() -> gr.Blocks:
                     label="Nicht gewusst – schau sie dir nochmal an",
                     visible=False,
                 )
+
+            with gr.Tab("🔎 Nachschlagen"):
+                lk_found = gr.State([])
+                with gr.Row():
+                    lk_query = gr.Textbox(
+                        label="Wörter suchen (Deutsch oder Italienisch, mehrere mit Komma trennen)",
+                        placeholder="z. B. Rucksack, sbrigarsi, gemütlich  (Enter zum Suchen)",
+                        scale=5,
+                    )
+                    lk_search = gr.Button("🔎 Suchen", variant="primary", scale=1)
+                lk_results = gr.Markdown()
+                lk_pick = gr.CheckboxGroup([], label="Diese Wörter speichern")
+                with gr.Row():
+                    lk_list = gr.Dropdown(
+                        [DEFAULT_LIST],
+                        value=DEFAULT_LIST,
+                        allow_custom_value=True,
+                        label="In Liste (neuer Name = neue Liste)",
+                        scale=2,
+                    )
+                    lk_box = gr.Radio(
+                        BOX_CHOICES, value=1, label="Fach im Vokabeltrainer (Schwierigkeit)", scale=3
+                    )
+                lk_save = gr.Button("💾 Ausgewählte speichern", variant="primary")
+
+            with gr.Tab("✏️ Listen bearbeiten") as ed_tab:
+                ed_ids = gr.State([])
+                with gr.Row(equal_height=True):
+                    ed_list = gr.Dropdown([ALL_LISTS], value=ALL_LISTS, label="Liste", scale=2)
+                    ed_search = gr.Textbox(
+                        label="🔍 Suchen", placeholder="Wort, Übersetzung oder Liste", scale=3
+                    )
+                    ed_sort = gr.Dropdown(
+                        list(SORT_COLUMNS), value="Hinzugefügt", label="Sortieren nach", scale=2
+                    )
+                    ed_desc = gr.Checkbox(value=True, label="absteigend", scale=1, min_width=100)
+                gr.Markdown(
+                    "Zelle anklicken zum Ändern. **Wort leeren** = löschen. **Liste** ändern = "
+                    "Wort verschieben. **Fach** 1 (neu/schwer) bis 6 (sitzt). Neue Zeile über das "
+                    "Zellenmenü. Erst mit **💾 Speichern** wird übernommen – vorher nicht suchen "
+                    "oder umsortieren, sonst gehen die Änderungen verloren."
+                )
+                ed_table = gr.Dataframe(
+                    headers=["Nr.", "Italienisch", "Deutsch", "Liste", "Fach"],
+                    datatype=["number", "str", "str", "str", "number"],
+                    value=[],
+                    type="array",
+                    interactive=True,
+                    static_columns=[0],
+                    wrap=True,
+                    elem_id="parla-editor",  # CSS hides the Nr. column and locks the header
+                )
+                with gr.Row():
+                    ed_save = gr.Button("💾 Speichern", variant="primary")
+                    ed_reload = gr.Button("↩️ Änderungen verwerfen")
+                with gr.Accordion("Liste umbenennen oder zusammenführen", open=False):
+                    with gr.Row():
+                        ed_new_name = gr.Textbox(
+                            label="Neuer Name (gibt es ihn schon, werden die Listen zusammengeführt)",
+                            scale=3,
+                        )
+                        ed_rename = gr.Button("Umbenennen", scale=1)
+
+        with gr.Accordion("⌨️ Tastenkürzel", open=False):
+            gr.Markdown(SHORTCUTS_HELP)
 
         settings_inputs = [session, model, level, scenario, expand]
         save_inputs = [*settings_inputs, speak, slow]
@@ -407,18 +643,24 @@ def build_app() -> gr.Blocks:
 
         # On page load: restore the user remembered by this browser. The model list is
         # refreshed every time, so it doesn't matter whether Ollama started first.
+        trainer_outputs = [trainer, tr_card, tr_reveal, tr_known, tr_unknown, tr_missed, tr_stats]
+        ed_view_inputs = [ed_list, ed_search, ed_sort, ed_desc]
+        refresh_inputs = [session, trainer, *ed_view_inputs]
+        refresh_outputs = [session, vocab_list, vocab, tr_list, *trainer_outputs, lk_list, ed_list, ed_table, ed_ids]
+
         locked(
-            demo.load(select_user, inputs=[saved_user, model], outputs=user_outputs),
+            demo.load(select_user, inputs=[saved_user, model], outputs=user_outputs)
+            .then(refresh_lists, refresh_inputs, refresh_outputs, queue=False),
             start_if_empty, settings_inputs, chat_outputs,
         )
         locked(
-            user.input(select_user, inputs=[user, model], outputs=user_outputs),
+            user.input(select_user, inputs=[user, model], outputs=user_outputs)
+            .then(refresh_lists, refresh_inputs, refresh_outputs, queue=False),
             start_if_empty, settings_inputs, chat_outputs,
         )
 
         vocab_list.input(select_list, [session, vocab_list], [session, vocab], queue=False)
 
-        trainer_outputs = [trainer, tr_card, tr_reveal, tr_known, tr_unknown, tr_missed, tr_stats]
         tr_list.input(trainer_select_list, [session, tr_list], trainer_outputs, queue=False)
         tr_start.click(trainer_start, [session, trainer], trainer_outputs, queue=False)
         tr_reveal.click(trainer_reveal, [session, trainer], trainer_outputs, queue=False)
@@ -445,6 +687,27 @@ def build_app() -> gr.Blocks:
         ).then(lambda: None, outputs=mic, queue=False)  # ready for the next recording
         replay.click(speak_last, [session, slow], [session, tutor_audio])
 
+        # Dictionary lookup
+        for trigger in (lk_query.submit, lk_search.click):
+            trigger(lookup_search, [session, model, lk_query], [lk_results, lk_pick, lk_found])
+        lk_save.click(
+            lookup_save, [session, lk_found, lk_pick, lk_list, lk_box], lk_pick, queue=False
+        ).success(refresh_lists, refresh_inputs, refresh_outputs, queue=False)
+
+        # List editor (reloaded when the tab is opened: the tutor adds words meanwhile)
+        ed_tab.select(refresh_lists, refresh_inputs, refresh_outputs, queue=False)
+        def ed_view(s, *view):
+            return editor_view(s.get("user"), *view)
+
+        for trigger in (ed_list.input, ed_search.submit, ed_search.input, ed_sort.input, ed_desc.input, ed_reload.click):
+            trigger(ed_view, [session, *ed_view_inputs], [ed_table, ed_ids], queue=False)
+        ed_save.click(
+            editor_save, [session, ed_list, ed_ids, ed_table], queue=False
+        ).success(refresh_lists, refresh_inputs, refresh_outputs, queue=False)
+        ed_rename.click(
+            editor_rename, [session, ed_list, ed_new_name], [ed_list, ed_new_name], queue=False
+        ).success(refresh_lists, refresh_inputs, refresh_outputs, queue=False)
+
     return demo
 
 
@@ -453,6 +716,7 @@ def main() -> None:
     build_app().launch(
         # Host/port come from GRADIO_SERVER_NAME / GRADIO_SERVER_PORT (default 127.0.0.1:7860).
         css=CSS,
+        head=SHORTCUTS_JS,
         inbrowser=os.environ.get("PARLA_OPEN_BROWSER", "1") == "1",
         auth=(user, password) if user and password else None,
     )

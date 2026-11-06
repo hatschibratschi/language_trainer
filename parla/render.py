@@ -22,6 +22,9 @@ CSS = """
   border: 1px solid var(--border-color-primary); border-radius: 16px;
   background: var(--background-fill-secondary);
 }
+/* List editor: the Nr. column only carries the row id for saving; headers are read-only. */
+#parla-editor th:first-child, #parla-editor td:first-child { display: none; }
+#parla-editor thead, #parla-editor th { pointer-events: none; }
 .parla-card-note { opacity: 0.7; font-size: 0.9em; }
 .parla-card-prompt { font-size: 1.8em; font-weight: 600; }
 .parla-card-answer { font-size: 1.6em; color: var(--color-accent); }
@@ -34,7 +37,7 @@ def render_turn(turn: TutorTurn, expand_translation: bool = False) -> str:
     if turn.corrections:
         lines = ["**✏️ Korrektur**"]
         for c in turn.corrections:
-            lines.append(f"- ~~{c.original}~~ → **{c.corrected}**  \n  🇩🇪 {c.explanation}")
+            lines.append(f"- ~~{c.original}~~ → **{c.corrected}**  \n  {c.explanation}")
         parts.append("\n".join(lines))
 
     if turn.better_phrasing:
@@ -43,14 +46,14 @@ def render_turn(turn: TutorTurn, expand_translation: bool = False) -> str:
     if parts:
         parts.append("---")
 
-    parts.append(f"🇮🇹 {turn.reply}")
+    parts.append(turn.reply)
 
     if turn.reply_translation:
         # Hidden behind a button by default, so the learner tries to understand first.
         open_attr = " open" if expand_translation else ""
         parts.append(
             f'<details class="parla-translation"{open_attr}>'
-            f"<summary>🇩🇪 Übersetzung</summary>"
+            f"<summary>Übersetzung</summary>"
             f"<em>{html.escape(turn.reply_translation)}</em></details>"
         )
 

@@ -3,7 +3,9 @@
 Runs natively on the Mac (like Ollama), because only there Whisper gets the Apple GPU
 via MLX. The Parla container reaches it at host.docker.internal:11500.
 
-    POST /stt?language=it   body: audio file (WAV; other formats via macOS afconvert)
+    POST /stt?language=it[&prompt=...]
+                            body: audio file (WAV; other formats via macOS afconvert)
+                            prompt: context text (Whisper initial_prompt)
                             -> {"text": "..."}
     POST /tts               body: {"text": "...", "voice": "it_IT-paola-medium", "speed": 1.0}
                             -> audio/wav
@@ -37,6 +39,7 @@ log = logging.getLogger("parla-speech")
 WHISPER_RATE = 16_000
 MAX_UPLOAD = 50 * 1024 * 1024  # ~ several minutes of WAV; push-to-talk turns are short
 MAX_TTS_CHARS = 2_000
+MAX_PROMPT_CHARS = 500  # Whisper uses at most ~224 prompt tokens anyway
 VOICES_DIR = Path(
     os.environ.get("PARLA_VOICES_DIR", Path.home() / ".local" / "share" / "parla" / "voices")
 )
@@ -111,7 +114,7 @@ def float_to_wav(audio: np.ndarray, rate: int) -> bytes:
 
 
 class Engine(Protocol):
-    def transcribe(self, audio: np.ndarray, language: str) -> str: ...
+    def transcribe(self, audio: np.ndarray, language: str, prompt: str | None = None) -> str: ...
     def synthesize(self, text: str, voice: str, speed: float) -> bytes: ...
 
 
@@ -126,7 +129,7 @@ class LocalEngine:
         self._stt_lock = threading.Lock()
         self._tts_lock = threading.Lock()
 
-    def transcribe(self, audio: np.ndarray, language: str) -> str:
+    def transcribe(self, audio: np.ndarray, language: str, prompt: str | None = None) -> str:
         import mlx_whisper
 
         if len(audio) < WHISPER_RATE // 4:  # under 0.25 s: nothing was said
@@ -137,6 +140,8 @@ class LocalEngine:
                 path_or_hf_repo=self.stt_model,
                 language=language,
                 condition_on_previous_text=False,
+                # The tutor's last reply: Whisper then expects words like "weekend", "fatto".
+                initial_prompt=prompt or None,
             )
         return str(result["text"]).strip()
 
@@ -204,8 +209,10 @@ def make_handler(engine: Engine) -> type[BaseHTTPRequestHandler]:
             url = urlparse(self.path)
             try:
                 if url.path == "/stt":
-                    language = parse_qs(url.query).get("language", ["it"])[0]
-                    text = engine.transcribe(decode_audio(self._body()), language)
+                    query = parse_qs(url.query)
+                    language = query.get("language", ["it"])[0]
+                    prompt = query.get("prompt", [""])[0].strip()[-MAX_PROMPT_CHARS:] or None
+                    text = engine.transcribe(decode_audio(self._body()), language, prompt)
                     self._json(200, {"text": text})
                 elif url.path == "/tts":
                     req = json.loads(self._body())

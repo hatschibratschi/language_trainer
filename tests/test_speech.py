@@ -40,8 +40,8 @@ class FakeEngine:
     def __init__(self):
         self.calls = []
 
-    def transcribe(self, audio, language):
-        self.calls.append(("stt", len(audio), language))
+    def transcribe(self, audio, language, prompt=None):
+        self.calls.append(("stt", len(audio), language, prompt))
         return " Vorrei un caffè. "
 
     def synthesize(self, text, voice, speed):
@@ -65,7 +65,7 @@ def test_client_server_roundtrip(server, tmp_path):
     assert speech.transcribe(rec, "it") == "Vorrei un caffè."
     rate, pcm = speech.wav_to_numpy(speech.synthesize("Ciao!", "it_IT-paola-medium", 0.75))
     assert rate == 22_050 and pcm.dtype == np.int16 and len(pcm) == 2_205
-    assert server.calls == [("stt", 8_000, "it"), ("tts", "Ciao!", "it_IT-paola-medium", 0.75)]
+    assert server.calls == [("stt", 8_000, "it", None), ("tts", "Ciao!", "it_IT-paola-medium", 0.75)]
 
 
 def test_bad_request_and_unreachable_service(server, monkeypatch):
@@ -74,3 +74,11 @@ def test_bad_request_and_unreachable_service(server, monkeypatch):
     monkeypatch.setattr(speech, "SPEECH_HOST", "http://127.0.0.1:9")
     with pytest.raises(speech.SpeechError, match="nicht erreichbar"):
         speech.synthesize("Ciao", "it_IT-paola-medium", timeout=2)
+
+
+def test_transcribe_passes_context_prompt(server, tmp_path):
+    rec = tmp_path / "rec.wav"
+    rec.write_bytes(float_to_wav(tone(16_000), 16_000))
+    prompt = "Che hai fatto nel weekend? È & più"
+    speech.transcribe(rec, "it", prompt)
+    assert server.calls[-1] == ("stt", 8_000, "it", prompt)

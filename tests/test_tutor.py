@@ -5,12 +5,14 @@ import pytest
 from parla.config import LANGUAGE_PAIRS, SCENARIOS
 from parla.render import render_chat, render_turn
 from parla.tutor import (
+    SPOKEN_TAG,
     START_TOKEN,
     Correction,
     Tutor,
     TutorTurn,
     build_system_prompt,
     pick_default_model,
+    to_ollama_messages,
 )
 
 PAIR = LANGUAGE_PAIRS["de-it"]
@@ -55,6 +57,7 @@ def test_respond_parses_structured_output():
     assert call["messages"][0]["role"] == "system"
     assert call["messages"][-1]["content"] == "Io sono andato in Roma"
     assert call["think"] is False
+    assert call["keep_alive"] == "30m" and call["options"]["num_ctx"] == 8192
     assert "properties" in call["format"]
 
 
@@ -74,7 +77,7 @@ def test_render_turn_with_and_without_translation():
     collapsed = render_turn(turn)
     assert "~~la problema~~" in collapsed and "**il problema**" in collapsed
     assert '<details class="parla-translation">' in collapsed
-    assert "<summary>🇩🇪 Übersetzung</summary>" in collapsed
+    assert "<summary>Übersetzung</summary>" in collapsed
     assert "Kein Problem!" in collapsed
     assert '<details class="parla-translation" open>' in render_turn(turn, expand_translation=True)
 
@@ -111,3 +114,16 @@ def test_pick_default_model(available, requested, expected):
 def test_render_chat_marks_spoken_messages():
     msgs = render_chat([{"role": "user", "text": "Ciao"}, {"role": "user", "text": "Ciao", "voice": True}])
     assert [m["content"] for m in msgs] == ["Ciao", "🎙️ Ciao"]
+
+
+def test_spoken_messages_are_tagged_for_the_model():
+    history = [
+        {"role": "assistant", "content": "Ciao!"},
+        {"role": "user", "content": "O fatto la spesa", "voice": True},
+        {"role": "user", "content": "Ho fatto la spesa"},
+    ]
+    messages = to_ollama_messages("SYS", history)
+    assert messages[2] == {"role": "user", "content": f"{SPOKEN_TAG} O fatto la spesa"}
+    assert messages[3] == {"role": "user", "content": "Ho fatto la spesa"}
+    assert all(set(m) == {"role", "content"} for m in messages)
+    assert SPOKEN_TAG in build_system_prompt(PAIR, "A1", SCENARIOS["free"])

@@ -10,6 +10,11 @@ from pydantic import BaseModel, Field, ValidationError
 from parla.config import LEVELS, OLLAMA_HOST, PREFERRED_MODELS, LanguagePair, Scenario
 
 START_TOKEN = "[START]"
+# Keep the model in memory between turns; reloading a 27b model takes a while.
+KEEP_ALIVE = "30m"
+# Context window in tokens: system prompt (~1,000) + ~65 per exchange -> about 100 exchanges.
+NUM_CTX = 8192
+SPOKEN_TAG = "[SPOKEN]"  # prefix for messages that came in by voice (speech recognition)
 
 
 class Correction(BaseModel):
@@ -57,11 +62,19 @@ line; corrections must then be empty.
 
 For every learner message:
 1. Check it for mistakes in {pair.target} (grammar, spelling, gender/articles,
-   prepositions, verb forms, word choice). Accents matter (e.g. "e" vs "è").
+   prepositions, verb forms, word choice). In typed messages accents matter
+   (e.g. "e" vs "è").
    For each real mistake add an entry to "corrections" with the exact wrong
    phrase, the corrected phrase and a short, friendly explanation in {pair.source}.
    Do NOT invent mistakes: if the message is correct, "corrections" is empty.
    Ignore missing capitalisation and final punctuation.
+   SPOKEN messages: a message starting with "{SPOKEN_TAG}" was spoken and transcribed by
+   speech recognition (the tag is not part of it; never quote it). Only grammar and word
+   choice count there: ignore spelling, accents, apostrophes and punctuation, because they
+   can't be heard ("o"/"ho", "si"/"sì", "e"/"è", "l'hanno"/"lanno" sound the same).
+   The transcript may also contain misheard words. If it is unclear, guess what the
+   learner most likely meant, put that in "better_phrasing", and answer that, instead of
+   only saying you didn't understand.
 2. If the learner writes in {pair.source} or mixes languages, help them: put the
    {pair.target} version in "better_phrasing" and continue in {pair.target}.
 3. "better_phrasing": only if a native speaker would say it noticeably more
@@ -99,9 +112,35 @@ def _example(pair: LanguagePair) -> str:
 (Note: "Io vorrei" is not wrong, but natives usually drop "io" -> better_phrasing.)"""
 
 
-def to_ollama_messages(system_prompt: str, history: list[dict[str, str]]) -> list[dict[str, str]]:
-    """history holds plain {"role", "content"} turns (assistant content = reply text)."""
-    return [{"role": "system", "content": system_prompt}, *history]
+def to_ollama_messages(system_prompt: str, history: list[dict]) -> list[dict[str, str]]:
+    """history holds {"role", "content"} turns (assistant content = reply text); spoken
+    learner turns also have "voice": True and get the SPOKEN_TAG prefix."""
+    messages = [{"role": "system", "content": system_prompt}]
+    for m in history:
+        content = f"{SPOKEN_TAG} {m['content']}" if m.get("voice") else m["content"]
+        messages.append({"role": m["role"], "content": content})
+    return messages
+
+
+def chat_json(
+    client: ChatClient, model: str, messages: list[dict], schema: dict, temperature: float
+) -> str:
+    """One chat call with structured output (JSON schema); returns the raw content."""
+    kwargs: dict[str, Any] = dict(
+        model=model,
+        messages=messages,
+        format=schema,
+        options={"temperature": temperature, "num_ctx": NUM_CTX},
+        keep_alive=KEEP_ALIVE,
+    )
+    try:
+        # Disable "thinking" for reasoning models (qwen3 etc.) – much faster.
+        response = client.chat(**kwargs, think=False)
+    except ollama.ResponseError as err:
+        if "think" not in str(err).lower():
+            raise
+        response = client.chat(**kwargs)
+    return response["message"]["content"]
 
 
 class Tutor:
@@ -114,23 +153,10 @@ class Tutor:
         pair: LanguagePair,
         level: str,
         scenario: Scenario,
-        history: list[dict[str, str]],
+        history: list[dict],
     ) -> TutorTurn:
         messages = to_ollama_messages(build_system_prompt(pair, level, scenario), history)
-        kwargs: dict[str, Any] = dict(
-            model=self.model,
-            messages=messages,
-            format=TutorTurn.model_json_schema(),
-            options={"temperature": 0.6},
-        )
-        try:
-            # Disable "thinking" for reasoning models (qwen3 etc.) – much faster.
-            response = self.client.chat(**kwargs, think=False)
-        except ollama.ResponseError as err:
-            if "think" not in str(err).lower():
-                raise
-            response = self.client.chat(**kwargs)
-        content = response["message"]["content"]
+        content = chat_json(self.client, self.model, messages, TutorTurn.model_json_schema(), 0.6)
         try:
             return TutorTurn.model_validate_json(content)
         except ValidationError:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import urllib.error
+import urllib.parse
 import urllib.request
 import wave
 from pathlib import Path
@@ -39,9 +40,14 @@ def _request(path: str, body: bytes, content_type: str, timeout: float) -> bytes
         ) from err
 
 
-def transcribe(audio_path: str | Path, language: str, timeout: float = 120) -> str:
+def transcribe(
+    audio_path: str | Path, language: str, prompt: str | None = None, timeout: float = 120
+) -> str:
+    """prompt: text the speech is likely related to (e.g. the tutor's last reply). Whisper
+    then expects its words, which helps a lot with a beginner's unclear pronunciation."""
     data = Path(audio_path).read_bytes()
-    raw = _request(f"/stt?language={language}", data, "application/octet-stream", timeout)
+    query = {"language": language, **({"prompt": prompt} if prompt else {})}
+    raw = _request(f"/stt?{urllib.parse.urlencode(query)}", data, "application/octet-stream", timeout)
     return str(json.loads(raw)["text"]).strip()
 
 

@@ -10,7 +10,8 @@ from __future__ import annotations
 import random
 from collections import defaultdict
 
-BOXES = 6
+from parla.store import BOXES
+
 ROUND_SIZE = 10
 # Relative chance that the next word comes from a box (only non-empty boxes count).
 BOX_WEIGHTS = {1: 40, 2: 25, 3: 15, 4: 10, 5: 6, 6: 4}

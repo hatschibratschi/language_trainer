@@ -102,3 +102,62 @@ def test_voice_settings_roundtrip_and_migration(tmp_path):
     s.speak, s.slow_speech = False, True
     store.save_settings("anna", s)
     assert store.load_settings("anna", DEFAULT) == s
+
+
+def test_add_vocab_with_list_and_box_counts_new_words(tmp_path):
+    store = make_store(tmp_path)
+    assert store.add_vocab("bellaMelanto", [("lo zaino", "der Rucksack")], "Reise", box=3) == 1
+    assert store.add_vocab("bellaMelanto", [("lo zaino", "x"), ("il treno", "der Zug")], "Reise", box=9) == 1
+    assert store.cards("bellaMelanto", "Reise") == [("lo zaino", "der Rucksack", 3), ("il treno", "der Zug", 6)]
+    assert store.find_vocab("bellaMelanto", ["lo zaino", "nope"]) == {"lo zaino": ("Reise", 3)}
+
+
+def test_apply_edits_updates_adds_and_deletes(tmp_path):
+    store = make_store(tmp_path)
+    store.add_vocab("hatschibratschi", [("ciao", "hallo"), ("grazie", "danke"), ("prego", "bitte")])
+    rows = store.edit_rows("hatschibratschi")
+    ids = [r[0] for r in rows]
+    by_word = {r[1]: r for r in rows}
+    edited = [
+        [by_word["ciao"][0], "ciao", "hallo, tschüss", "Gruß", 2],  # changed
+        [by_word["grazie"][0], "", "danke", "Standard", 1],  # emptied -> deleted
+        # "prego" removed from the table -> deleted
+        [None, "per favore", "bitte", "", ""],  # new, default list and box
+        ["", "", "", "", ""],  # empty new row -> ignored
+    ]
+    r = store.apply_edits("hatschibratschi", ids, edited, default_list="Standard")
+    assert (r.updated, r.added, r.deleted, r.errors) == (1, 1, 2, [])
+    assert sorted(store.cards("hatschibratschi")) == [("ciao", "hallo, tschüss", 2), ("per favore", "bitte", 1)]
+    assert store.vocab_lists("hatschibratschi") == ["Standard", "Gruß"]
+
+
+def test_apply_edits_reports_duplicates_and_is_per_user(tmp_path):
+    store = make_store(tmp_path)
+    store.add_vocab("hatschibratschi", [("ciao", "hallo"), ("grazie", "danke")])
+    store.add_vocab("bellaMelanto", [("ciao", "hallo")])
+    rows = store.edit_rows("hatschibratschi")
+    ciao = next(r for r in rows if r[1] == "ciao")
+    r = store.apply_edits("hatschibratschi", [ciao[0]], [[ciao[0], "grazie", "x", "Standard", 1], [None, "grazie", "y", "", 1]])
+    assert r.updated == 0 and r.added == 0 and len(r.errors) == 2
+    other = store.edit_rows("bellaMelanto")[0][0]
+    store.apply_edits("hatschibratschi", [other], [])  # someone else's id: nothing happens
+    assert store.vocab("bellaMelanto") == [["ciao", "hallo"]]
+
+
+def test_rename_list_merges(tmp_path):
+    store = make_store(tmp_path)
+    store.add_vocab("hatschibratschi", [("ciao", "hallo")], "A")
+    store.add_vocab("hatschibratschi", [("grazie", "danke")], "B")
+    assert store.rename_list("hatschibratschi", "A", "B") == 1
+    assert store.vocab_lists("hatschibratschi") == ["Standard", "B"]
+
+
+def test_editor_filter_and_sort():
+    from parla.app import filter_rows
+
+    rows = [[1, "la casa", "das Haus", "A", 2], [2, "il bar", "die Bar", "B", 5], [3, "l'albero", "der Baum", "A", 1]]
+    assert [r[0] for r in filter_rows(rows, "", "Hinzugefügt", True)] == [3, 2, 1]
+    assert [r[1] for r in filter_rows(rows, "", "Italienisch", False)] == ["l'albero", "il bar", "la casa"]
+    assert [r[0] for r in filter_rows(rows, "", "Fach", True)] == [2, 1, 3]
+    assert [r[0] for r in filter_rows(rows, "BA", "Deutsch", False)] == [2, 3]  # Bar, Baum
+    assert [r[0] for r in filter_rows(rows, "b", "Liste", False)] == [3, 2]  # lists A, B

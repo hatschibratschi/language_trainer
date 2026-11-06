@@ -84,7 +84,11 @@ Log of the LaunchAgent: `~/Library/Logs/parla-speech.log`; remove it with
 **In the app (tab "💬 Gespräch"):**
 
 - **🎙️ Sprechen:** tap to record, speak Italian, tap stop. The transcript appears in the chat
-  (marked 🎙️) and goes to the tutor like a typed message. Corrections refer to what Whisper heard.
+  (marked 🎙️) and goes to the tutor like a typed message. Whisper gets the tutor's last reply
+  as context (`initial_prompt`), so it expects the words of the conversation.
+- The tutor knows which messages were spoken: there it ignores spelling, accents and punctuation
+  (they can't be heard, e.g. "o"/"ho", "si"/"sì"), corrects only grammar and word choice, and if
+  the transcript is unclear it suggests what you probably meant.
 - The tutor's Italian reply is read aloud (not the German explanations). **🔊 Nochmal anhören**
   plays it again.
 - Per user: **🔊 Antworten vorlesen** (on/off) and **🐢 Langsam vorlesen** (75 % speed).
@@ -121,6 +125,35 @@ Tips for the iPhone:
 - iOS may block autoplay. If the reply isn't spoken automatically, tap ▶ in the **🔊 Tutor**
   player or **🔊 Nochmal anhören**.
 - No sound at all? Check the volume and the silent mode switch.
+
+### Vocabulary: trainer, lookup and list editor
+
+- **🗂️ Vokabeltrainer:** Leitner box with 6 boxes ("Fächer"); rounds of 10 words, mostly from
+  the low boxes.
+- **🔎 Nachschlagen:** type one or more words (German or Italian, separated by commas). The
+  model returns 2–4 meanings per word with CEFR level (difficulty) and an example sentence, and
+  marks words you already have. Tick the ones you want, pick a list (a new name creates a new
+  list) and the box (1 = new/hard … 6 = known), then **💾 Ausgewählte speichern**.
+- **✏️ Listen bearbeiten:** an editable table per list. Change words, translations, list (moves
+  the word) and box; empty the Italian word to delete it; add rows via the cell menu. Nothing
+  is written until **💾 Speichern**. Lists can be renamed or merged.
+
+### Keyboard shortcuts
+
+⌥ = Alt/Option. They are listed in the app under **⌨️ Tastenkürzel**.
+
+| Key | Action |
+|---|---|
+| ⌥1 … ⌥4 | switch tab |
+| ⌥R | start/stop recording (stop = send) |
+| ⌥P | play the last reply again |
+| ⌥T | show/hide the translation of the last reply |
+| Esc / `/` | leave the text field / jump into the message field |
+| Space | trainer: reveal (or start a new round) |
+| → or 1 / ← or 2 | trainer: known / not known |
+| N | trainer: new round |
+
+Single keys only work when no text field has the focus.
 
 ### Users and data
 
@@ -165,6 +198,9 @@ This works because OrbStack exposes container ports to the LAN (`orb config show
   saves you from looking up the IP.
 - Ollama and parla-speech stay reachable only on the Mac (`127.0.0.1`), so they are not exposed to the LAN.
 - **Voice needs HTTPS** on the iPhone, see [Using it on the iPhone](#using-it-on-the-iphone-https).
+- The browser shows **"Not secure"** for `http://` addresses. That is expected and fine here:
+  the traffic stays in your own network. Only a shared password (`PARLA_AUTH_PASSWORD`) would
+  travel unencrypted. The microphone, though, needs HTTPS (or `localhost`).
 
 **Status:** version 0.3 = roadmap steps 1 and 2: text chat with corrections, level, scenarios,
 vocabulary list and trainer, multiple users with stored settings, plus **voice mode**
@@ -184,7 +220,7 @@ vocabulary list and trainer, multiple users with stored settings, plus **voice m
 - The tutor answers in Italian at your level (short sentences and common words at A1/A2).
 - After each of your turns the tutor gives a short **correction block**:
   - ✅ the corrected sentence
-  - 🇩🇪 a short explanation in German ("*Nach* ‚andare' + Stadt → *a*, nicht *in*")
+  - a short explanation in German ("*Nach* ‚andare' + Stadt → *a*, nicht *in*")
   - 💡 optionally, a more natural way to say it
 - A button shows the German translation of any tutor message.
 

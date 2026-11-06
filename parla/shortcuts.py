@@ -1,0 +1,100 @@
+"""Keyboard shortcuts (injected into the page head) and their help text."""
+
+from __future__ import annotations
+
+# Alt (⌥ on the Mac) combinations work everywhere, even while typing. They use
+# KeyboardEvent.code, so they also work on a German Mac keyboard where ⌥+R types "®".
+# Single keys only work when no text field has the focus (press Esc to leave one).
+SHORTCUTS_JS = """
+<script>
+(() => {
+  const visible = (el) => el && el.offsetParent !== null;
+  const button = (id) => {
+    const el = document.getElementById(id);
+    if (!el) return null;
+    return el.tagName === "BUTTON" ? el : el.querySelector("button");
+  };
+  const click = (id) => {
+    const b = button(id);
+    if (visible(b) && !b.disabled) { b.click(); return true; }
+    return false;
+  };
+  const typing = (el) =>
+    el && (el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName));
+
+  function toggleRecording() {
+    const mic = document.getElementById("parla-mic");
+    if (!mic) return false;
+    for (const sel of [".stop-button", ".stop-button-paused", ".record-button"]) {
+      const b = mic.querySelector(sel);
+      if (visible(b)) { b.click(); return true; }
+    }
+    return false;
+  }
+
+  function toggleTranslation() {
+    const all = document.querySelectorAll("#parla-chat details.parla-translation");
+    const last = all[all.length - 1];
+    if (!last) return false;
+    last.open = !last.open;
+    return true;
+  }
+
+  function selectTab(n) {
+    const tabs = [...document.querySelectorAll('button[role="tab"]')];
+    if (!tabs[n]) return false;
+    tabs[n].click();
+    return true;
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.defaultPrevented || e.isComposing) return;
+    let done = false;
+    if (e.altKey && !e.ctrlKey && !e.metaKey) {
+      const digit = /^Digit([1-9])$/.exec(e.code);
+      if (digit) done = selectTab(Number(digit[1]) - 1);
+      else if (e.code === "KeyR") done = toggleRecording();
+      else if (e.code === "KeyP") done = click("parla-replay");
+      else if (e.code === "KeyT") done = toggleTranslation();
+    } else if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (e.key === "Escape" && typing(document.activeElement)) {
+        document.activeElement.blur();
+        return;
+      }
+      if (typing(document.activeElement)) return;
+      if (e.key === "/") {
+        const msg = document.querySelector("#parla-msg textarea");
+        if (visible(msg)) { msg.focus(); done = true; }
+      } else if (e.key === " " || e.key === "Enter") {
+        done = click("parla-reveal") || (e.key === " " && click("parla-start"));
+      } else if (e.key === "ArrowRight" || e.key === "1") {
+        done = click("parla-known");
+      } else if (e.key === "ArrowLeft" || e.key === "2") {
+        done = click("parla-unknown");
+      } else if (e.key === "n") {
+        done = click("parla-start");
+      }
+    }
+    if (done) e.preventDefault();
+  });
+})();
+</script>
+"""
+
+SHORTCUTS_HELP = """
+| Taste | Wirkung |
+|---|---|
+| **⌥ 1** … **⌥ 4** | Tab wechseln (Gespräch, Vokabeltrainer, Nachschlagen, Listen bearbeiten) |
+| **⌥ R** | 🎙️ Aufnahme starten / stoppen (stoppen = senden) |
+| **⌥ P** | 🔊 Letzte Antwort nochmal anhören |
+| **⌥ T** | Übersetzung der letzten Antwort auf-/zuklappen |
+| **Enter** | Nachricht senden · Suche starten |
+| **Esc** | Textfeld verlassen, danach gehen die Einzeltasten |
+| **/** | Ins Nachrichtenfeld springen |
+| **Leertaste** | Vokabeltrainer: Aufdecken (oder neue Runde starten) |
+| **→** oder **1** | Vokabeltrainer: ✅ Gewusst |
+| **←** oder **2** | Vokabeltrainer: ❌ Nicht gewusst |
+| **N** | Vokabeltrainer: neue Runde |
+
+⌥ = Alt-/Option-Taste. Die Einzeltasten wirken nur, wenn kein Textfeld aktiv ist.
+"""
