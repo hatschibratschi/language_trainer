@@ -106,3 +106,8 @@ def test_render_chat_roles():
 )
 def test_pick_default_model(available, requested, expected):
     assert pick_default_model(available, requested) == expected
+
+
+def test_render_chat_marks_spoken_messages():
+    msgs = render_chat([{"role": "user", "text": "Ciao"}, {"role": "user", "text": "Ciao", "voice": True}])
+    assert [m["content"] for m in msgs] == ["Ciao", "🎙️ Ciao"]

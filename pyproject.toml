@@ -1,7 +1,7 @@
 [project]
 name = "parla"
 version = "0.1.0"
-description = "Local LLM language trainer (German → Italian) using Ollama"
+description = "Local LLM language trainer (German → Italian) using Ollama, with voice"
 authors = [
     { name = "hatschi bratschi", email = "hatschibratschi@gmail.com" }
 ]
@@ -10,10 +10,14 @@ dependencies = [
     "gradio>=6.31.0",
     "ollama>=0.6.3",
     "pydantic>=2.14.3",
+    # Speech service (parla-speech) runs natively on Apple Silicon only, not in Docker.
+    "mlx-whisper>=0.4.3 ; platform_machine == 'arm64' and sys_platform == 'darwin'",
+    "piper-tts>=1.8.0 ; platform_machine == 'arm64' and sys_platform == 'darwin'",
 ]
 
 [project.scripts]
 parla = "parla.app:main"
+parla-speech = "parla.speech_server:main"
 
 [build-system]
 requires = ["uv_build>=0.13.6,<0.14.0"]

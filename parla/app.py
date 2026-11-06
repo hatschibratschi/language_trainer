@@ -20,6 +20,7 @@ from parla.config import (
     SCENARIOS,
     USERS,
 )
+from parla import speech
 from parla.render import CSS, render_chat
 from parla.store import DEFAULT_LIST, Settings, Store
 from parla.trainer import ROUND_SIZE, box_counts, next_box, pick_round
@@ -69,6 +70,7 @@ def ask_tutor(session: dict, model: str, level: str, scenario_key: str) -> None:
     turn = Tutor(model).respond(PAIR, level, SCENARIOS[scenario_key], session["history"])
     session["history"].append({"role": "assistant", "content": turn.reply})
     session["entries"].append({"role": "assistant", "turn": turn})
+    session["unspoken"] = turn.reply  # read aloud by speak_reply, if enabled
     store = get_store()
     store.add_vocab(
         session["user"],
@@ -105,6 +107,8 @@ def select_user(user: str | None, current_model: str | None):
         s.level,
         s.scenario,
         s.expand_translation,
+        s.speak,
+        s.slow_speech,
         session,
         chat,
         gr.update(choices=list_choices(user), value=ALL_LISTS),
@@ -115,11 +119,18 @@ def select_user(user: str | None, current_model: str | None):
     )
 
 
-def save_settings(session, model, level, scenario_key, expand) -> None:
+def save_settings(session, model, level, scenario_key, expand, speak, slow) -> None:
     if session.get("user"):
         get_store().save_settings(
             session["user"],
-            Settings(model=model, level=level, scenario=scenario_key, expand_translation=expand),
+            Settings(
+                model=model,
+                level=level,
+                scenario=scenario_key,
+                expand_translation=expand,
+                speak=speak,
+                slow_speech=slow,
+            ),
         )
 
 
@@ -236,13 +247,13 @@ def start_if_empty(session, model, level, scenario_key, expand):
         yield from start_conversation(session, model, level, scenario_key, expand)
 
 
-def send_message(text, session, model, level, scenario_key, expand):
+def send_message(text, session, model, level, scenario_key, expand, voice=False):
     text = (text or "").strip()
     if not text:
         yield "", session, *chat_view(session, expand)
         return
     session["history"].append({"role": "user", "content": text})
-    session["entries"].append({"role": "user", "text": text})
+    session["entries"].append({"role": "user", "text": text, **({"voice": True} if voice else {})})
     # Show the learner's message immediately while the model is thinking.
     yield "", session, *chat_view(session, expand)
     try:
@@ -254,6 +265,47 @@ def send_message(text, session, model, level, scenario_key, expand):
             raise
         raise gr.Error(f"Fehler beim Aufruf von Ollama: {err}") from err
     yield "", session, *chat_view(session, expand)
+
+
+# --- voice ---------------------------------------------------------------------
+
+
+def voice_message(audio, session, model, level, scenario_key, expand):
+    """Push-to-talk: transcribe the recording, then send it like a typed message."""
+    if not audio:
+        yield "", session, *chat_view(session, expand)
+        return
+    try:
+        text = speech.transcribe(audio, PAIR.stt_language)
+    except speech.SpeechError as err:
+        raise gr.Error(str(err)) from err
+    if not text:
+        gr.Warning("Nichts verstanden – bitte nochmal sprechen.")
+        yield "", session, *chat_view(session, expand)
+        return
+    yield from send_message(text, session, model, level, scenario_key, expand, voice=True)
+
+
+def speak_reply(session: dict, speak: bool, slow: bool):
+    """Read the tutor's newest reply aloud (only the target-language part)."""
+    text = session.pop("unspoken", None)
+    if not text or not speak:
+        return session, None
+    try:
+        wav = speech.synthesize(text, PAIR.tts_voice, speech.SLOW_SPEED if slow else 1.0)
+    except speech.SpeechError as err:
+        gr.Warning(str(err))  # the text answer is already there; don't fail the turn
+        return session, None
+    return session, speech.wav_to_numpy(wav)
+
+
+def speak_last(session: dict, slow: bool):
+    """🔊 button: read the last tutor reply again."""
+    for e in reversed(session["entries"]):
+        if e["role"] == "assistant":
+            session["unspoken"] = e["turn"].reply
+            break
+    return speak_reply(session, True, slow)
 
 
 # --- layout ------------------------------------------------------------------
@@ -277,6 +329,8 @@ def build_app() -> gr.Blocks:
                         level = gr.Radio(list(LEVELS), value=DEFAULT_LEVEL, label="Niveau (GER)")
                         scenario = gr.Dropdown(SCENARIO_CHOICES, value=DEFAULT_SCENARIO, label="Szenario")
                         expand = gr.Checkbox(value=False, label="Übersetzungen immer aufklappen")
+                        speak = gr.Checkbox(value=True, label="🔊 Antworten vorlesen")
+                        slow = gr.Checkbox(value=False, label="🐢 Langsam vorlesen")
                         restart = gr.Button("🔄 Neues Gespräch", variant="secondary")
                         gr.Markdown("### 📚 Meine Vokabeln")
                         vocab_list = gr.Dropdown([ALL_LISTS], value=ALL_LISTS, label="Liste")
@@ -294,6 +348,25 @@ def build_app() -> gr.Blocks:
                                 autofocus=True,
                             )
                             send = gr.Button("Senden", variant="primary", scale=1)
+                        with gr.Row(equal_height=True):
+                            # Push-to-talk: tap to record, tap stop → transcribed and sent.
+                            mic = gr.Audio(
+                                sources=["microphone"],
+                                type="filepath",
+                                label="🎙️ Sprechen (Italienisch)",
+                                editable=False,
+                                scale=3,
+                            )
+                            with gr.Column(scale=2, min_width=160):
+                                tutor_audio = gr.Audio(
+                                    label="🔊 Tutor",
+                                    autoplay=True,
+                                    interactive=False,
+                                    format="wav",
+                                    editable=False,
+                                    buttons=[],
+                                )
+                                replay = gr.Button("🔊 Nochmal anhören", size="sm")
 
             with gr.Tab("🗂️ Vokabeltrainer"):
                 trainer = gr.State(new_trainer())
@@ -316,16 +389,19 @@ def build_app() -> gr.Blocks:
                 )
 
         settings_inputs = [session, model, level, scenario, expand]
-        user_outputs = [user, model, level, scenario, expand, session, chatbot, vocab_list, vocab, saved_user, tr_list,
+        save_inputs = [*settings_inputs, speak, slow]
+        user_outputs = [user, model, level, scenario, expand, speak, slow, session, chatbot, vocab_list, vocab, saved_user, tr_list,
                         trainer, tr_card, tr_reveal, tr_known, tr_unknown, tr_missed, tr_stats]
         chat_outputs = [session, chatbot, vocab]
 
         def locked(dep, fn, inputs, outputs):
             """Run fn with the user selector disabled. Otherwise switching users while the
-            tutor is answering would let the late answer overwrite the new user's chat."""
+            tutor is answering would let the late answer overwrite the new user's chat.
+            Afterwards the new tutor reply (if any) is read aloud."""
             return (
                 dep.then(lambda: gr.update(interactive=False), outputs=user, queue=False)
                 .then(fn, inputs=inputs, outputs=outputs)
+                .then(speak_reply, inputs=[session, speak, slow], outputs=[session, tutor_audio])
                 .then(lambda: gr.update(interactive=True), outputs=user, queue=False)
             )  # .then also runs after errors, so the selector is always unlocked again
 
@@ -350,11 +426,11 @@ def build_app() -> gr.Blocks:
         tr_unknown.click(lambda s, t: trainer_answer(s, t, False), [session, trainer], trainer_outputs, queue=False)
 
         # .input (not .change) so programmatic updates from select_user don't fire these.
-        for control in (model, level, expand):
-            control.input(save_settings, inputs=settings_inputs)
+        for control in (model, level, expand, speak, slow):
+            control.input(save_settings, inputs=save_inputs)
         expand.input(lambda s, e: render_chat(s["entries"], e), [session, expand], chatbot)
         locked(
-            scenario.input(save_settings, inputs=settings_inputs),
+            scenario.input(save_settings, inputs=save_inputs),
             start_conversation, settings_inputs, chat_outputs,
         )
         locked(restart.click(lambda: None, queue=False), start_conversation, settings_inputs, chat_outputs)
@@ -363,6 +439,11 @@ def build_app() -> gr.Blocks:
             locked(
                 trigger(lambda: None, queue=False), send_message, [msg, *settings_inputs], [msg, *chat_outputs]
             )
+        locked(
+            mic.stop_recording(lambda: None, queue=False),
+            voice_message, [mic, *settings_inputs], [msg, *chat_outputs],
+        ).then(lambda: None, outputs=mic, queue=False)  # ready for the next recording
+        replay.click(speak_last, [session, slow], [session, tutor_audio])
 
     return demo
 

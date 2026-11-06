@@ -62,7 +62,8 @@ def render_chat(entries: list[dict], expand_translation: bool = False) -> list[d
     messages = []
     for e in entries:
         if e["role"] == "user":
-            messages.append({"role": "user", "content": e["text"]})
+            prefix = "🎙️ " if e.get("voice") else ""  # spoken, shown as transcribed
+            messages.append({"role": "user", "content": prefix + e["text"]})
         else:
             messages.append(
                 {"role": "assistant", "content": render_turn(e["turn"], expand_translation)}

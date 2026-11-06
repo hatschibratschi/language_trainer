@@ -22,7 +22,8 @@ ENV GRADIO_SERVER_NAME=0.0.0.0 \
     GRADIO_SERVER_PORT=7860 \
     GRADIO_ANALYTICS_ENABLED=False \
     PARLA_OPEN_BROWSER=0 \
-    OLLAMA_HOST=http://host.docker.internal:11434
+    OLLAMA_HOST=http://host.docker.internal:11434 \
+    PARLA_SPEECH_HOST=http://host.docker.internal:11500
 
 EXPOSE 7860
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \

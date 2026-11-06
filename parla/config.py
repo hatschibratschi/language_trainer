@@ -7,6 +7,11 @@ from dataclasses import dataclass
 
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 
+# Speech service (parla-speech: Whisper STT + Piper TTS), running natively on the Mac.
+SPEECH_PORT = int(os.environ.get("PARLA_SPEECH_PORT", "11500"))
+SPEECH_HOST = os.environ.get("PARLA_SPEECH_HOST", f"http://localhost:{SPEECH_PORT}")
+STT_MODEL = os.environ.get("PARLA_STT_MODEL", "mlx-community/whisper-large-v3-turbo")
+
 # Models tried in this order when PARLA_MODEL is not set.
 PREFERRED_MODELS = ["gemma3:27b", "mistral-small3.2:24b", "qwen3:14b", "gemma3:12b"]
 DEFAULT_MODEL = os.environ.get("PARLA_MODEL")
@@ -18,11 +23,18 @@ class LanguagePair:
     source: str  # learner's native language (used for explanations)
     target: str  # language being learned
     label: str
+    stt_language: str  # Whisper language code of the target language
+    tts_voice: str  # Piper voice for the target language (https://rhasspy.github.io/piper-samples/)
 
 
 LANGUAGE_PAIRS: dict[str, LanguagePair] = {
     "de-it": LanguagePair(
-        key="de-it", source="German", target="Italian", label="Deutsch → Italienisch"
+        key="de-it",
+        source="German",
+        target="Italian",
+        label="Deutsch → Italienisch",
+        stt_language="it",
+        tts_voice="it_IT-paola-medium",
     ),
 }
 DEFAULT_PAIR = "de-it"

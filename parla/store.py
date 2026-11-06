@@ -19,7 +19,9 @@ CREATE TABLE IF NOT EXISTS settings (
     model              TEXT,
     level              TEXT NOT NULL,
     scenario           TEXT NOT NULL,
-    expand_translation INTEGER NOT NULL DEFAULT 0
+    expand_translation INTEGER NOT NULL DEFAULT 0,
+    speak              INTEGER NOT NULL DEFAULT 1,
+    slow_speech        INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS vocab (
     user        TEXT NOT NULL REFERENCES users(name),
@@ -47,6 +49,8 @@ class Settings:
     level: str
     scenario: str
     expand_translation: bool = False
+    speak: bool = True  # read the tutor's replies aloud
+    slow_speech: bool = False
 
 
 class Store:
@@ -64,6 +68,12 @@ class Store:
             # Databases from before the vocabulary trainer: every word starts in box 1.
             if "box" not in cols:
                 db.execute("ALTER TABLE vocab ADD COLUMN box INTEGER NOT NULL DEFAULT 1")
+            # Databases from before voice mode.
+            cols = [r[1] for r in db.execute("PRAGMA table_info(settings)")]
+            if "speak" not in cols:
+                db.execute("ALTER TABLE settings ADD COLUMN speak INTEGER NOT NULL DEFAULT 1")
+            if "slow_speech" not in cols:
+                db.execute("ALTER TABLE settings ADD COLUMN slow_speech INTEGER NOT NULL DEFAULT 0")
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path, timeout=10)
@@ -81,22 +91,39 @@ class Store:
     def load_settings(self, user: str, default: Settings) -> Settings:
         with closing(self._connect()) as db:
             row = db.execute(
-                "SELECT model, level, scenario, expand_translation FROM settings WHERE user = ?",
+                "SELECT model, level, scenario, expand_translation, speak, slow_speech"
+                " FROM settings WHERE user = ?",
                 (user,),
             ).fetchone()
         if row is None:
             return default
-        return Settings(model=row[0], level=row[1], scenario=row[2], expand_translation=bool(row[3]))
+        return Settings(
+            model=row[0],
+            level=row[1],
+            scenario=row[2],
+            expand_translation=bool(row[3]),
+            speak=bool(row[4]),
+            slow_speech=bool(row[5]),
+        )
 
     def save_settings(self, user: str, s: Settings) -> None:
         with closing(self._connect()) as db, db:
             db.execute(
-                """INSERT INTO settings(user, model, level, scenario, expand_translation)
-                   VALUES (:user, :model, :level, :scenario, :expand_translation)
+                """INSERT INTO settings(user, model, level, scenario, expand_translation,
+                                        speak, slow_speech)
+                   VALUES (:user, :model, :level, :scenario, :expand_translation,
+                           :speak, :slow_speech)
                    ON CONFLICT(user) DO UPDATE SET model = excluded.model,
                        level = excluded.level, scenario = excluded.scenario,
-                       expand_translation = excluded.expand_translation""",
-                {"user": user, **asdict(s), "expand_translation": int(s.expand_translation)},
+                       expand_translation = excluded.expand_translation,
+                       speak = excluded.speak, slow_speech = excluded.slow_speech""",
+                {
+                    "user": user,
+                    **asdict(s),
+                    "expand_translation": int(s.expand_translation),
+                    "speak": int(s.speak),
+                    "slow_speech": int(s.slow_speech),
+                },
             )
 
     # --- vocabulary ------------------------------------------------------

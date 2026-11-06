@@ -82,3 +82,23 @@ def test_old_database_is_migrated_to_default_list(tmp_path):
     db.close()
     store = Store(path)
     assert store.vocab("u", "Standard") == [["ciao", "hallo"]]
+
+
+def test_voice_settings_roundtrip_and_migration(tmp_path):
+    import sqlite3
+
+    path = tmp_path / "old.db"
+    with sqlite3.connect(path) as db:  # settings table from before voice mode
+        db.executescript(
+            """CREATE TABLE users (name TEXT PRIMARY KEY);
+               CREATE TABLE settings (user TEXT PRIMARY KEY, model TEXT, level TEXT NOT NULL,
+                   scenario TEXT NOT NULL, expand_translation INTEGER NOT NULL DEFAULT 0);
+               INSERT INTO users VALUES ('anna');
+               INSERT INTO settings VALUES ('anna', 'm', 'B1', 'bar', 1);"""
+        )
+    store = Store(path)
+    s = store.load_settings("anna", DEFAULT)
+    assert (s.level, s.speak, s.slow_speech) == ("B1", True, False)
+    s.speak, s.slow_speech = False, True
+    store.save_settings("anna", s)
+    assert store.load_settings("anna", DEFAULT) == s

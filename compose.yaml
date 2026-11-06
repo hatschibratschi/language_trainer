@@ -14,6 +14,8 @@ services:
       - ./data:/data
     environment:
       OLLAMA_HOST: http://host.docker.internal:11434
+      # Speech service (parla-speech) running natively on the Mac, like Ollama.
+      PARLA_SPEECH_HOST: http://host.docker.internal:11500
       PARLA_DATA_DIR: /data
       PARLA_MODEL: ${PARLA_MODEL:-}
       PARLA_USERS: ${PARLA_USERS:-hatschibratschi,bellaMelanto}
