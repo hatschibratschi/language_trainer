@@ -1,5 +1,8 @@
 # Parla – a local LLM language trainer
 
+> **📱 iPhone / voice: open <https://mac-mini.tailc86229.ts.net:8443>**
+> (Tailscale must be on). Don't use `http://192.168…:7860`: Safari blocks the microphone there.
+
 Parla is a personal language trainer that runs entirely on your own machine. A local LLM (served by Ollama) acts as a patient tutor you can talk to by text or by voice
 (Whisper listens, Piper speaks Italian). The first language pair is **German (native) → Italian (target)**. Other pairs can be added later by changing the configuration.
 
