@@ -99,7 +99,8 @@ def test_voice_settings_roundtrip_and_migration(tmp_path):
     store = Store(path)
     s = store.load_settings("anna", DEFAULT)
     assert (s.level, s.speak, s.slow_speech) == ("B1", True, False)
-    s.speak, s.slow_speech = False, True
+    assert (s.hands_free, s.pause_ms) == (False, 1200)
+    s.speak, s.slow_speech, s.hands_free, s.pause_ms = False, True, True, 2000
     store.save_settings("anna", s)
     assert store.load_settings("anna", DEFAULT) == s
 

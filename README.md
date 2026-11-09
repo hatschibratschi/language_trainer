@@ -84,17 +84,28 @@ listens on `127.0.0.1`, so it is not reachable from the LAN (the container still
 Log of the LaunchAgent: `~/Library/Logs/parla-speech.log`; remove it with
 `scripts/install-speech-agent.sh --remove`.
 
-**In the app (tab "💬 Gespräch"):**
+**In the app (page "💬 Gespräch"):**
 
-- **🎙️ Sprechen:** tap to record, speak Italian, tap stop. The transcript appears in the chat
+- **🎙️ Halten zum Sprechen** (default): hold the button while you speak Italian, let go to
+  send. The button turns red while it records; on the very first press wait for that (Safari
+  asks for the microphone first). The transcript appears in the chat
   (marked 🎙️) and goes to the tutor like a typed message. Whisper gets the tutor's last reply
   as context (`initial_prompt`), so it expects the words of the conversation.
 - The tutor knows which messages were spoken: there it ignores spelling, accents and punctuation
   (they can't be heard, e.g. "o"/"ho", "si"/"sì"), corrects only grammar and word choice, and if
   the transcript is unclear it suggests what you probably meant.
-- The tutor's Italian reply is read aloud (not the German explanations). **🔊 Nochmal anhören**
-  plays it again.
-- Per user: **🔊 Antworten vorlesen** (on/off) and **🐢 Langsam vorlesen** (75 % speed).
+- **🎧 Freihändig** (choose it under ⚙️ Einstellungen → Sprechen): tap the button once and just
+  talk. A pause (default 1.2 s, adjustable) sends what you said; while the tutor answers and
+  speaks the microphone is off, then it listens again (green button). Tap again to end; leaving
+  the chat page or locking the phone ends it, too. Short noises are ignored, and so are the
+  phrases Whisper tends to invent from background noise ("Grazie per la visione", "Sottotitoli
+  …"). For thinking pauses, raise the pause in the settings.
+- The tutor's Italian reply is read aloud (not the German explanations). The **🔊** button next
+  to the talk button plays it again.
+- Words the tutor picks as new vocabulary are shown under its reply (📚) and saved to the
+  "Standard" list.
+- Under **⚙️ Einstellungen**, per user: **🔊 Antworten vorlesen** (on/off) and
+  **🐢 Langsam vorlesen** (75 % speed), the speaking mode and the hands-free pause.
 
 | Setting (speech service) | Default                                   |
 |--------------------------|-------------------------------------------|
@@ -123,11 +134,21 @@ inside your tailnet, not from the internet.
 
 Tips for the iPhone:
 
-- The first time you record, Safari asks for microphone permission. If you said no, allow it under
+- The first time you press the talk button, Safari asks for microphone permission. If you said no, allow it under
   Settings → Apps → Safari → Microphone (or via the "aA" menu → Website Settings).
-- iOS may block autoplay. If the reply isn't spoken automatically, tap ▶ in the **🔊 Tutor**
-  player or **🔊 Nochmal anhören**.
+- Safari only plays sound after a first tap on the page, so the tutor's greeting right after
+  opening the app may stay silent (the button briefly shows "🔇 Tippe 🔊 zum Anhören"). From
+  the first tap on, replies are spoken automatically.
 - No sound at all? Check the volume and the silent mode switch.
+
+### Layout: burger menu and settings
+
+The app is laid out for the phone. The **☰** menu at the top left switches between the pages
+💬 Gespräch, 🗂️ Vokabeltrainer, 🔎 Nachschlagen, ✏️ Listen bearbeiten and ⚙️ Einstellungen.
+The chat page holds only the conversation, the talk button with **🔊** (replay) and the text field;
+**🔄 Neu** in the header starts a new conversation. Everything else is on **⚙️ Einstellungen**:
+the learner ("👤 Wer lernt?"), level, scenario, read-aloud options, translation option, model
+and the keyboard shortcuts.
 
 ### Vocabulary: trainer, lookup and list editor
 
@@ -147,8 +168,8 @@ Tips for the iPhone:
 
 | Key | Action |
 |---|---|
-| ⌥1 … ⌥4 | switch tab |
-| ⌥R | start/stop recording (stop = send) |
+| ⌥1 … ⌥5 | switch page (Gespräch, Trainer, Nachschlagen, Listen, Einstellungen) |
+| ⌥R | start/stop recording (stop = send); hands-free: on/off |
 | ⌥P | play the last reply again |
 | ⌥T | show/hide the translation of the last reply |
 | Esc / `/` | leave the text field / jump into the message field |
@@ -160,10 +181,11 @@ Single keys only work when no text field has the focus.
 
 ### Users and data
 
-There is no login. Each learner simply picks their name under **"👤 Wer lernt?"**. Each user has their own:
+There is no login. Each learner simply picks their name under **⚙️ Einstellungen →
+"👤 Wer lernt?"**. Each user has their own:
 
 - settings (model, level, scenario, translation option)
-- vocabulary list ("Meine Vokabeln"), kept across sessions
+- vocabulary lists, kept across sessions
 - current conversation: you can continue on another device or after a reload
 
 Each browser remembers the last selected user. The user selector is locked while the tutor is
@@ -268,9 +290,11 @@ vocabulary list and trainer, multiple users with stored settings, plus **voice m
    both native on the Mac (Apple Silicon)
 ```
 
-A voice turn: record in the browser → `parla-speech /stt` (Whisper, language fixed to Italian) →
+A voice turn: the browser records the microphone itself (Web Audio, `parla/voice_ui.py`; in
+hands-free mode it also detects speech and pauses by loudness) and sends 16 kHz WAV → `parla-speech /stt` (Whisper, language fixed to Italian) →
 the transcript goes to the tutor like a typed message → the reply is shown → `parla-speech /tts`
-(Piper) → played in the browser.
+(Piper) → sent back as a data URL and played by the same script (which then, hands-free,
+listens again).
 
 - **Tutor engine:** builds the system prompt (language pair, level, scenario) and asks the model for structured output (Ollama `format` = JSON schema) with separate fields for `reply`, `corrections`, `better_phrasing`, `reply_translation` and `new_vocabulary`. This makes it easy to render corrections and fill the vocabulary trainer.
 - **Speech service:** `parla/speech_server.py`, a small standard-library HTTP server (`POST /stt`, `POST /tts`, `GET /health`). Uploads that are not WAV (e.g. AAC from an iPhone) are converted with macOS `afconvert`, so no ffmpeg is needed. The container only needs `parla/speech.py`, a plain HTTP client.

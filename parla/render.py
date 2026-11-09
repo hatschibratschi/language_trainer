@@ -28,6 +28,66 @@ CSS = """
 .parla-card-note { opacity: 0.7; font-size: 0.9em; }
 .parla-card-prompt { font-size: 1.8em; font-weight: 600; }
 .parla-card-answer { font-size: 1.6em; color: var(--color-accent); }
+.parla-vocab { font-size: 0.85em; opacity: 0.75; }
+
+/* --- page frame: sticky header with burger menu ------------------------------ */
+#parla-header {
+  position: sticky; top: 0; z-index: 50; flex-wrap: nowrap !important; align-items: center;
+  gap: 8px; padding: 6px 0; background: var(--body-background-fill);
+}
+#parla-title { min-width: 0 !important; flex: 1 1 auto !important; }
+#parla-burger { font-size: 1.3em; padding: 4px 10px; }
+.parla-title { font-size: 1.15em; font-weight: 600; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; }
+
+/* Slide-in menu, toggled by its "open" class. (Gradio prefixes these rules with
+   .gradio-container, so selectors on <body> would never match.) */
+#parla-nav {
+  position: fixed !important; top: 0; left: 0; bottom: 0;
+  width: min(290px, 82vw) !important; min-width: 0 !important;
+  z-index: 1001; padding: 16px; gap: 8px; overflow-y: auto; flex-wrap: nowrap;
+  background: var(--background-fill-primary); box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
+  transform: translateX(-110%); transition: transform 0.2s ease;
+}
+#parla-nav.open { transform: none; box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.35); }
+.parla-nav-item { justify-content: flex-start !important; text-align: left; font-size: 1.05em; }
+.parla-nav-head { font-size: 1.4em; font-weight: 700; padding: 4px 4px 12px; }
+.parla-nav-sub { font-size: 0.6em; font-weight: 400; opacity: 0.7; }
+
+/* --- chat page ---------------------------------------------------------------- */
+#parla-input, #parla-voice { flex-wrap: nowrap !important; align-items: stretch; gap: 8px; }
+#parla-msg textarea { font-size: 16px; }  /* 16px: iOS doesn't zoom in when typing */
+#parla-send, #parla-replay { font-size: 1.2em; }
+/* Hold-to-talk / hands-free button (behaviour in voice_ui.py). No text selection or
+   iOS long-press menu while holding it. */
+#parla-talk {
+  width: 100%; height: 100%; min-height: 48px; padding: 8px 12px; border-radius: 12px;
+  font-size: 1.05em; font-weight: 600; cursor: pointer; touch-action: none;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  border: 1px solid var(--border-color-primary); background: var(--background-fill-secondary);
+  color: var(--body-text-color); transition: background 0.15s, transform 0.1s;
+}
+#parla-talk.active { background: #e5484d; border-color: #e5484d; color: white; transform: scale(0.98); }
+#parla-talk.hands-free[data-state="listening"] { background: #2f9e44; border-color: #2f9e44; color: white; }
+#parla-talk[data-state="sending"], #parla-talk[data-state="starting"] { opacity: 0.7; }
+#parla-talk-wrap { flex: 1 1 auto !important; }
+.parla-hidden { display: none !important; }
+#parla-page-chat { gap: 8px; }
+#parla-burger, #parla-restart { flex: 0 0 auto !important; white-space: nowrap; }
+/* The chatbot's own "Clear" only empties the screen, not the saved conversation. */
+#parla-chat button[aria-label="Clear"] { display: none; }
+"""
+
+# Gradio scopes CSS= rules to the inside of the app, so styles for the page around it
+# (margins, footer) go into <head> instead.
+HEAD_CSS = """
+<style>
+.gradio-container .main.fillable { padding-top: 4px !important; padding-bottom: 0 !important; }
+@media (max-width: 640px) {
+  .gradio-container .main.fillable { padding-left: 8px !important; padding-right: 8px !important; }
+  .gradio-container footer { display: none !important; }
+}
+</style>
 """
 
 
@@ -56,6 +116,13 @@ def render_turn(turn: TutorTurn, expand_translation: bool = False) -> str:
             f"<summary>Übersetzung</summary>"
             f"<em>{html.escape(turn.reply_translation)}</em></details>"
         )
+
+    if turn.new_vocabulary:
+        # Saved to the "Standard" list automatically; shown so the learner notices.
+        words = " · ".join(
+            f"<b>{html.escape(v.word)}</b> – {html.escape(v.translation)}" for v in turn.new_vocabulary
+        )
+        parts.append(f'<div class="parla-vocab">📚 {words}</div>')
 
     return "\n\n".join(parts)
 

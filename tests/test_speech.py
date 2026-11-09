@@ -82,3 +82,38 @@ def test_transcribe_passes_context_prompt(server, tmp_path):
     prompt = "Che hai fatto nel weekend? È & più"
     speech.transcribe(rec, "it", prompt)
     assert server.calls[-1] == ("stt", 8_000, "it", prompt)
+
+
+def test_data_url_roundtrip(tmp_path):
+    import base64
+
+    from parla import speech
+
+    url = speech.wav_data_url(b"RIFF1234")
+    assert url == "data:audio/wav;base64," + base64.b64encode(b"RIFF1234").decode()
+    path = speech.save_data_url(url)
+    try:
+        assert path.read_bytes() == b"RIFF1234"
+    finally:
+        path.unlink()
+
+
+def test_save_data_url_rejects_garbage():
+    import pytest
+
+    from parla import speech
+
+    for bad in ("", "hello", "data:text/plain;base64,aGk=", "data:audio/wav;base64,%%%"):
+        with pytest.raises(speech.SpeechError):
+            speech.save_data_url(bad)
+
+
+def test_phantom_transcripts():
+    from parla import speech
+
+    assert speech.is_phantom("Grazie per la visione!")
+    assert speech.is_phantom("Sottotitoli creati dalla comunità Amara.org")
+    assert speech.is_phantom("  ")
+    assert speech.is_phantom("Grazie.")
+    assert not speech.is_phantom("Grazie, sto bene.")
+    assert not speech.is_phantom("Oggi ho lavorato molto")

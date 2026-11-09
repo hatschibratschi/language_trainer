@@ -21,7 +21,9 @@ CREATE TABLE IF NOT EXISTS settings (
     scenario           TEXT NOT NULL,
     expand_translation INTEGER NOT NULL DEFAULT 0,
     speak              INTEGER NOT NULL DEFAULT 1,
-    slow_speech        INTEGER NOT NULL DEFAULT 0
+    slow_speech        INTEGER NOT NULL DEFAULT 0,
+    hands_free         INTEGER NOT NULL DEFAULT 0,
+    pause_ms           INTEGER NOT NULL DEFAULT 1200
 );
 CREATE TABLE IF NOT EXISTS vocab (
     user        TEXT NOT NULL REFERENCES users(name),
@@ -72,6 +74,8 @@ class Settings:
     expand_translation: bool = False
     speak: bool = True  # read the tutor's replies aloud
     slow_speech: bool = False
+    hands_free: bool = False  # voice: listen continuously instead of hold-to-talk
+    pause_ms: int = 1200  # hands-free: silence that ends a spoken message
 
 
 class Store:
@@ -95,6 +99,10 @@ class Store:
                 db.execute("ALTER TABLE settings ADD COLUMN speak INTEGER NOT NULL DEFAULT 1")
             if "slow_speech" not in cols:
                 db.execute("ALTER TABLE settings ADD COLUMN slow_speech INTEGER NOT NULL DEFAULT 0")
+            # Databases from before hands-free voice mode.
+            if "hands_free" not in cols:
+                db.execute("ALTER TABLE settings ADD COLUMN hands_free INTEGER NOT NULL DEFAULT 0")
+                db.execute("ALTER TABLE settings ADD COLUMN pause_ms INTEGER NOT NULL DEFAULT 1200")
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.path, timeout=10)
@@ -112,7 +120,8 @@ class Store:
     def load_settings(self, user: str, default: Settings) -> Settings:
         with closing(self._connect()) as db:
             row = db.execute(
-                "SELECT model, level, scenario, expand_translation, speak, slow_speech"
+                "SELECT model, level, scenario, expand_translation, speak, slow_speech,"
+                " hands_free, pause_ms"
                 " FROM settings WHERE user = ?",
                 (user,),
             ).fetchone()
@@ -125,25 +134,30 @@ class Store:
             expand_translation=bool(row[3]),
             speak=bool(row[4]),
             slow_speech=bool(row[5]),
+            hands_free=bool(row[6]),
+            pause_ms=int(row[7]),
         )
 
     def save_settings(self, user: str, s: Settings) -> None:
         with closing(self._connect()) as db, db:
             db.execute(
                 """INSERT INTO settings(user, model, level, scenario, expand_translation,
-                                        speak, slow_speech)
+                                        speak, slow_speech, hands_free, pause_ms)
                    VALUES (:user, :model, :level, :scenario, :expand_translation,
-                           :speak, :slow_speech)
+                           :speak, :slow_speech, :hands_free, :pause_ms)
                    ON CONFLICT(user) DO UPDATE SET model = excluded.model,
                        level = excluded.level, scenario = excluded.scenario,
                        expand_translation = excluded.expand_translation,
-                       speak = excluded.speak, slow_speech = excluded.slow_speech""",
+                       speak = excluded.speak, slow_speech = excluded.slow_speech,
+                       hands_free = excluded.hands_free, pause_ms = excluded.pause_ms""",
                 {
                     "user": user,
                     **asdict(s),
                     "expand_translation": int(s.expand_translation),
                     "speak": int(s.speak),
                     "slow_speech": int(s.slow_speech),
+                    "hands_free": int(s.hands_free),
+                    "pause_ms": int(s.pause_ms),
                 },
             )
 
