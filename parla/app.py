@@ -26,7 +26,7 @@ from parla.render import CSS, HEAD_CSS, render_chat
 from parla.shortcuts import SHORTCUTS_HELP, SHORTCUTS_JS
 from parla.voice_ui import VOICE_JS
 from parla.store import BOXES, DEFAULT_LIST, Settings, Store
-from parla.trainer import ROUND_SIZE, box_counts, next_box, pick_round
+from parla.trainer import ROUND_SIZE, next_box, pick_round
 from parla.tutor import START_TOKEN, Tutor, list_models, pick_default_model
 
 PAIR = LANGUAGE_PAIRS[DEFAULT_PAIR]
@@ -139,27 +139,45 @@ def trainer_cards(user: str, list_name: str):
     return get_store().cards(user, None if list_name == ALL_LISTS else list_name)
 
 
-def card_html(prompt: str, answer: str | None, note: str) -> str:
+def card_html(prompt: str, answer: str | None, note: str = "") -> str:
+    note_html = f'<div class="parla-card-note">{note}</div>' if note else ""
     answer_html = (
         f'<div class="parla-card-answer">{html.escape(answer)}</div>' if answer is not None else ""
     )
     return (
-        f'<div class="parla-card"><div class="parla-card-note">{note}</div>'
+        f'<div class="parla-card">{note_html}'
         f'<div class="parla-card-prompt">{html.escape(prompt)}</div>{answer_html}</div>'
     )
 
 
+def round_html(t: dict) -> str:
+    """Round header above the card: progress bar, card number, box and score so far."""
+    cards, i = t["cards"], t["i"]
+    if not cards or i >= len(cards):
+        return ""
+    missed = len(t["missed"])
+    known = i - missed
+    box = cards[i][2]
+    pct = round(100 * i / len(cards))
+    return (
+        '<div class="parla-round">'
+        '<div class="parla-round-row">'
+        f'<span class="parla-round-count">Karte <b>{i + 1}</b> / {len(cards)}</span>'
+        f'<span class="parla-round-box" title="Fach 1 = neu/schwer, 6 = sitzt">Fach {box}</span>'
+        f'<span class="parla-round-score">✅ {known} · ❌ {missed}</span>'
+        "</div>"
+        f'<div class="parla-round-bar"><div style="width: {pct}%"></div></div>'
+        "</div>"
+    )
+
+
 def trainer_view(t: dict, user: str | None):
-    """Outputs: trainer state, card, reveal/known/unknown buttons, missed table, box stats."""
-    counts = box_counts(trainer_cards(user, t["list"])) if user else {}
-    stats = " · ".join(f"Fach {b}: **{n}**" for b, n in counts.items())
+    """Outputs: trainer state, card, reveal/known/unknown buttons, missed table, round header."""
     cards, i = t["cards"], t["i"]
     in_round = 0 < len(cards) and i < len(cards)
     if in_round:
         word, translation, box = cards[i]
-        card = card_html(
-            translation, word if t["revealed"] else None, f"Karte {i + 1} / {len(cards)} · Fach {box}"
-        )
+        card = card_html(translation, word if t["revealed"] else None)
     elif cards:  # round finished
         known = len(cards) - len(t["missed"])
         card = (
@@ -180,7 +198,7 @@ def trainer_view(t: dict, user: str | None):
         gr.update(visible=in_round and t["revealed"]),
         gr.update(visible=in_round and t["revealed"]),
         gr.update(value=t["missed"], visible=bool(cards) and not in_round and bool(t["missed"])),
-        stats,
+        round_html(t),
     )
 
 
@@ -555,12 +573,12 @@ def build_app() -> gr.Blocks:
             with gr.Row():
                 tr_list = gr.Dropdown([ALL_LISTS], value=ALL_LISTS, label="Liste", scale=2)
                 tr_start = gr.Button(f"▶️ Neue Runde ({ROUND_SIZE} Wörter)", variant="primary", scale=1, elem_id="parla-start")
-            tr_stats = gr.Markdown()
+            tr_round = gr.HTML()
             tr_card = gr.HTML(card_html("", None, ""))
-            with gr.Row():
+            with gr.Row(elem_id="parla-answer-row"):
                 tr_reveal = gr.Button("👀 Aufdecken", variant="primary", visible=False, elem_id="parla-reveal")
-                tr_known = gr.Button("✅ Gewusst", variant="primary", visible=False, elem_id="parla-known")
                 tr_unknown = gr.Button("❌ Nicht gewusst", variant="stop", visible=False, elem_id="parla-unknown")
+                tr_known = gr.Button("✅ Gewusst", variant="primary", visible=False, elem_id="parla-known")
             tr_missed = gr.Dataframe(
                 headers=["Deutsch", "Italienisch"],
                 value=[],
@@ -661,7 +679,7 @@ def build_app() -> gr.Blocks:
         settings_inputs = [session, model, level, scenario, expand]
         save_inputs = [*settings_inputs, speak, slow, voice_mode, pause]
         user_outputs = [user, model, level, scenario, expand, speak, slow, voice_mode, pause, session, chatbot, saved_user, tr_list,
-                        trainer, tr_card, tr_reveal, tr_known, tr_unknown, tr_missed, tr_stats]
+                        trainer, tr_card, tr_reveal, tr_known, tr_unknown, tr_missed, tr_round]
         chat_outputs = [session, chatbot]
 
         PLAY_JS = "(d) => window.parlaVoice?.play(d)"
@@ -681,7 +699,7 @@ def build_app() -> gr.Blocks:
 
         # On page load: restore the user remembered by this browser. The model list is
         # refreshed every time, so it doesn't matter whether Ollama started first.
-        trainer_outputs = [trainer, tr_card, tr_reveal, tr_known, tr_unknown, tr_missed, tr_stats]
+        trainer_outputs = [trainer, tr_card, tr_reveal, tr_known, tr_unknown, tr_missed, tr_round]
         ed_view_inputs = [ed_list, ed_search, ed_sort, ed_desc]
         refresh_inputs = [session, trainer, *ed_view_inputs]
         refresh_outputs = [tr_list, *trainer_outputs, lk_list, ed_list, ed_table, ed_ids]

@@ -28,6 +28,19 @@ CSS = """
 .parla-card-note { opacity: 0.7; font-size: 0.9em; }
 .parla-card-prompt { font-size: 1.8em; font-weight: 600; }
 .parla-card-answer { font-size: 1.6em; color: var(--color-accent); }
+/* Vocab trainer: round header above the card, spaced-out answer buttons. */
+.parla-round { display: flex; flex-direction: column; gap: 8px; margin-bottom: 4px; }
+.parla-round-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.parla-round-count { font-size: 1.05em; }
+.parla-round-box {
+  padding: 2px 12px; border-radius: 999px; font-size: 0.85em;
+  border: 1px solid var(--border-color-primary); background: var(--background-fill-secondary);
+}
+.parla-round-score { font-size: 0.95em; opacity: 0.85; }
+.parla-round-bar { height: 6px; border-radius: 999px; background: var(--border-color-primary); overflow: hidden; }
+.parla-round-bar > div { height: 100%; background: var(--color-accent); transition: width 0.3s ease; }
+#parla-answer-row { gap: 48px !important; margin-top: 8px; }
+@media (max-width: 640px) { #parla-answer-row { gap: 24px !important; } }
 .parla-vocab { font-size: 0.85em; opacity: 0.75; }
 
 /* --- page frame: sticky header with burger menu ------------------------------ */

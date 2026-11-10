@@ -73,9 +73,9 @@ SHORTCUTS_JS = """
         if (visible(msg)) { msg.focus(); done = true; }
       } else if (e.key === " " || e.key === "Enter") {
         done = click("parla-reveal") || (e.key === " " && click("parla-start"));
-      } else if (e.key === "ArrowRight" || e.key === "1") {
+      } else if (e.key === "ArrowRight" || e.key === "2") {
         done = click("parla-known");
-      } else if (e.key === "ArrowLeft" || e.key === "2") {
+      } else if (e.key === "ArrowLeft" || e.key === "1") {
         done = click("parla-unknown");
       } else if (e.key === "n") {
         done = click("parla-start");
@@ -98,8 +98,8 @@ SHORTCUTS_HELP = """
 | **Esc** | Textfeld verlassen, danach gehen die Einzeltasten |
 | **/** | Ins Nachrichtenfeld springen |
 | **Leertaste** | Vokabeltrainer: Aufdecken (oder neue Runde starten) |
-| **→** oder **1** | Vokabeltrainer: ✅ Gewusst |
-| **←** oder **2** | Vokabeltrainer: ❌ Nicht gewusst |
+| **←** oder **1** | Vokabeltrainer: ❌ Nicht gewusst |
+| **→** oder **2** | Vokabeltrainer: ✅ Gewusst |
 | **N** | Vokabeltrainer: neue Runde |
 
 ⌥ = Alt-/Option-Taste. Die Einzeltasten wirken nur, wenn kein Textfeld aktiv ist.

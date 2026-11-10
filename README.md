@@ -174,7 +174,7 @@ and the keyboard shortcuts.
 | ⌥T | show/hide the translation of the last reply |
 | Esc / `/` | leave the text field / jump into the message field |
 | Space | trainer: reveal (or start a new round) |
-| → or 1 / ← or 2 | trainer: known / not known |
+| ← or 1 / → or 2 | trainer: not known / known |
 | N | trainer: new round |
 
 Single keys only work when no text field has the focus.
