@@ -1,0 +1,22 @@
+# Additions for the always-on server (adventurelog), used together with compose.yaml.
+# Put this into .env on the server so a plain `docker compose …` picks up both files:
+#
+#   COMPOSE_FILE=compose.yaml:compose.server.yaml
+#   OLLAMA_HOST=http://100.72.117.91:11434         # Mac Mini's Tailscale IP
+#   PARLA_SPEECH_HOST=http://100.72.117.91:11500
+#   PARLA_AUTH_USER=…                              # the site is public: set a password
+#   PARLA_AUTH_PASSWORD=…
+#
+# The Tailscale IP is used instead of the MagicDNS name, because containers don't
+# resolve tailnet names. Caddy (from the adventurelog stack) serves the app over HTTPS.
+services:
+  parla:
+    # No published port: Caddy reaches the container as parla:7860 on its network.
+    ports: !reset []
+    networks:
+      - caddy
+
+networks:
+  caddy:
+    external: true
+    name: ${CADDY_NETWORK:-adventurelog_default}

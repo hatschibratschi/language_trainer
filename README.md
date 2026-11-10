@@ -20,6 +20,40 @@ uv run pytest                 # run tests
 Choose a model with `PARLA_MODEL=qwen3:14b uv run parla`. Without this setting the app uses the first
 installed model from `gemma3:27b`, `mistral-small3.2:24b`, `qwen3:14b`, …
 
+## Running on the always-on server (adventurelog)
+
+The web app and the SQLite database live on the server, so the **vocabulary trainer and
+list editor work around the clock**. The Mac Mini is only switched on for the chat:
+it serves Ollama and parla-speech to the server over Tailscale.
+
+```
+  iPhone · iPad · browser
+         │  https://parla.178-104-161-250.sslip.io   (Caddy, password)
+┌────────▼──────────────────────────┐   Tailscale    ┌──────────────────────────┐
+│ adventurelog server (always on)   │ ─────────────▶ │ Mac Mini (on when needed)│
+│ parla container + SQLite          │  :11434 :11500 │ Ollama · parla-speech    │
+│ trainer · list editor · settings  │                └──────────────────────────┘
+│ chat · lookup · voice ── need the Mac
+└───────────────────────────────────┘
+```
+
+While the Mac is off, chat and lookup show a "💤 Mac Mini nicht erreichbar" banner and
+the app opens on the vocabulary trainer. Every 15 s the app checks again; once the Mac is
+up, the banner disappears and the conversation starts.
+
+**Mac:** Ollama and parla-speech must listen on the Tailscale address, not only on
+localhost: in `~/Library/LaunchAgents/com.ollama.server.plist` set `OLLAMA_HOST` to
+`100.72.117.91:11434` (or `0.0.0.0:11434`), and install the speech agent with
+`PARLA_SPEECH_BIND=100.72.117.91 scripts/install-speech-agent.sh`.
+
+**Server** (`~/git/github/language_trainer`, `.env` as described in `compose.server.yaml`):
+
+```bash
+git pull && docker compose up -d --build
+```
+
+Caddy (`~/adventurelog/caddy/Caddyfile`) has `parla.178-104-161-250.sslip.io { reverse_proxy parla:7860 }`.
+
 ## Running as a web server in Docker (OrbStack)
 
 The app runs in a container. **Ollama** and the speech service **parla-speech** keep running

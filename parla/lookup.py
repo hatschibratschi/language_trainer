@@ -5,10 +5,10 @@ from __future__ import annotations
 import re
 from typing import Literal
 
-import ollama
 from pydantic import BaseModel, Field, ValidationError
 
-from parla.config import OLLAMA_HOST, LanguagePair
+from parla import backend
+from parla.config import LanguagePair
 from parla.tutor import ChatClient, chat_json
 
 MAX_QUERIES = 10
@@ -65,7 +65,7 @@ def lookup(
 ) -> list[LookupEntry]:
     if not queries:
         return []
-    client = client or ollama.Client(host=OLLAMA_HOST)
+    client = client or backend.ollama_client()
     messages = [
         {"role": "system", "content": build_prompt(pair)},
         {"role": "user", "content": "\n".join(queries)},

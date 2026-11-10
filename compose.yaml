@@ -13,9 +13,10 @@ services:
       # SQLite database with users, settings, vocabulary and conversations.
       - ./data:/data
     environment:
-      OLLAMA_HOST: http://host.docker.internal:11434
-      # Speech service (parla-speech) running natively on the Mac, like Ollama.
-      PARLA_SPEECH_HOST: http://host.docker.internal:11500
+      # Ollama and the speech service (parla-speech) run natively on the Mac. On the
+      # server, .env points both at the Mac's Tailscale address (see compose.server.yaml).
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+      PARLA_SPEECH_HOST: ${PARLA_SPEECH_HOST:-http://host.docker.internal:11500}
       PARLA_DATA_DIR: /data
       PARLA_MODEL: ${PARLA_MODEL:-}
       PARLA_USERS: ${PARLA_USERS:-hatschibratschi,bellaMelanto}

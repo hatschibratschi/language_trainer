@@ -7,7 +7,8 @@ from typing import Any, Protocol
 import ollama
 from pydantic import BaseModel, Field, ValidationError
 
-from parla.config import LEVELS, OLLAMA_HOST, PREFERRED_MODELS, LanguagePair, Scenario
+from parla import backend
+from parla.config import LEVELS, PREFERRED_MODELS, LanguagePair, Scenario
 
 START_TOKEN = "[START]"
 # Keep the model in memory between turns; reloading a 27b model takes a while.
@@ -146,7 +147,7 @@ def chat_json(
 class Tutor:
     def __init__(self, model: str, client: ChatClient | None = None):
         self.model = model
-        self.client = client or ollama.Client(host=OLLAMA_HOST)
+        self.client = client or backend.ollama_client()
 
     def respond(
         self,
@@ -162,16 +163,6 @@ class Tutor:
         except ValidationError:
             # Fall back to showing the raw text rather than failing the turn.
             return TutorTurn(reply=content.strip(), reply_translation="")
-
-
-def list_models(client: ChatClient | None = None) -> list[str]:
-    try:
-        client = client or ollama.Client(host=OLLAMA_HOST)
-        names = [m["model"] for m in client.list()["models"]]  # type: ignore[attr-defined]
-    except Exception:
-        return []
-    # Embedding models can't chat.
-    return sorted(n for n in names if "embed" not in n and "bge" not in n)
 
 
 def pick_default_model(available: list[str], requested: str | None = None) -> str | None:

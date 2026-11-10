@@ -9,6 +9,9 @@ PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 UV=$(command -v uv || true)
 LOG="$HOME/Library/Logs/parla-speech.log"
+# Address to listen on. 127.0.0.1 = only this Mac. For the web app on the server use the
+# Mac's Tailscale address (or 0.0.0.0), e.g. PARLA_SPEECH_BIND=100.72.117.91 scripts/…
+BIND=${PARLA_SPEECH_BIND:-127.0.0.1}
 
 launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
 
@@ -31,6 +34,8 @@ cat > "$PLIST" <<PLIST
         <string>$UV</string><string>run</string><string>--project</string><string>$REPO</string>
         <string>parla-speech</string>
     </array>
+    <key>EnvironmentVariables</key>
+    <dict><key>PARLA_SPEECH_BIND</key><string>$BIND</string></dict>
     <key>WorkingDirectory</key><string>$REPO</string>
     <key>RunAtLoad</key><true/>
     <key>KeepAlive</key><true/>
@@ -41,4 +46,4 @@ cat > "$PLIST" <<PLIST
 PLIST
 
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
-echo "Installed $LABEL (log: $LOG). Check: curl http://localhost:11500/health"
+echo "Installed $LABEL on $BIND (log: $LOG). Check: curl http://localhost:11500/health"

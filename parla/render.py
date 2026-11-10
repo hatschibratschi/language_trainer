@@ -89,6 +89,13 @@ CSS = """
 #parla-burger, #parla-restart { flex: 0 0 auto !important; white-space: nowrap; }
 /* The chatbot's own "Clear" only empties the screen, not the saved conversation. */
 #parla-chat button[aria-label="Clear"] { display: none; }
+/* Shown on the chat and lookup pages while the Mac Mini (Ollama) is off. */
+.parla-mac-off {
+  align-items: center; gap: 8px; padding: 8px 12px; border-radius: 12px;
+  border: 1px solid var(--color-accent); background: var(--background-fill-secondary);
+}
+.parla-mac-off .parla-mac-text { flex: 1 1 auto; font-size: 0.9em; }
+.parla-mac-off button { flex: 0 0 auto !important; white-space: nowrap; }
 """
 
 # Gradio scopes CSS= rules to the inside of the app, so styles for the page around it

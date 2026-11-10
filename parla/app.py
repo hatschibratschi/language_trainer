@@ -21,13 +21,13 @@ from parla.config import (
     SCENARIOS,
     USERS,
 )
-from parla import lookup, speech
+from parla import backend, lookup, speech
 from parla.render import CSS, HEAD_CSS, render_chat
 from parla.shortcuts import SHORTCUTS_HELP, SHORTCUTS_JS
 from parla.voice_ui import VOICE_JS
 from parla.store import BOXES, DEFAULT_LIST, Settings, Store
 from parla.trainer import ROUND_SIZE, next_box, pick_round
-from parla.tutor import START_TOKEN, Tutor, list_models, pick_default_model
+from parla.tutor import START_TOKEN, Tutor, pick_default_model
 
 PAIR = LANGUAGE_PAIRS[DEFAULT_PAIR]
 SCENARIO_CHOICES = [(s.label, s.key) for s in SCENARIOS.values()]
@@ -58,7 +58,7 @@ def chat_view(session: dict, expand: bool):
 def ask_tutor(session: dict, model: str, level: str, scenario_key: str) -> None:
     """Call the model with the current history and record its turn in the session."""
     if not model:
-        raise gr.Error("Kein Ollama-Modell gefunden. Läuft Ollama?")
+        raise gr.Error("Kein Modell gewählt (⚙️ Einstellungen).")
     turn = Tutor(model).respond(PAIR, level, SCENARIOS[scenario_key], session["history"])
     session["history"].append({"role": "assistant", "content": turn.reply})
     session["entries"].append({"role": "assistant", "turn": turn})
@@ -80,12 +80,15 @@ def select_user(user: str | None, current_model: str | None):
     user = user if user in USERS else USERS[0]
     store = get_store()
 
-    models = list_models()
+    models = backend.status().models  # [] while the Mac is off
     fallback_model = pick_default_model(models, DEFAULT_MODEL) or current_model
     s = store.load_settings(
         user, Settings(model=fallback_model, level=DEFAULT_LEVEL, scenario=DEFAULT_SCENARIO)
     )
-    model = s.model if s.model in models else fallback_model
+    if models:
+        model = s.model if s.model in models else fallback_model
+    else:  # can't tell which models exist: keep the saved choice
+        model = s.model or fallback_model
 
     session = new_session(user)
     saved = store.load_conversation(user)
@@ -303,13 +306,13 @@ def lookup_search(session: dict, model: str, text: str):
     if not queries:
         raise gr.Error("Bitte ein oder mehrere Wörter eingeben (getrennt durch Komma).")
     if not model:
-        raise gr.Error("Kein Ollama-Modell gefunden. Läuft Ollama?")
+        raise gr.Error("Kein Modell gewählt (⚙️ Einstellungen).")
     try:
         entries = lookup.lookup(model, PAIR, queries)
     except ValueError as err:
         raise gr.Error(str(err)) from err
     except Exception as err:  # noqa: BLE001
-        raise gr.Error(f"Fehler beim Aufruf von Ollama: {err}") from err
+        raise gr.Error(backend.error_message(err)) from err
     if not entries:
         return "Nichts gefunden.", gr.update(choices=[], value=[]), []
 
@@ -393,6 +396,9 @@ def editor_rename(session: dict, ed_list: str, new_name: str):
 
 
 def start_conversation(session, model, level, scenario_key, expand):
+    # Check first: without the Mac the saved conversation must not be cleared.
+    if not backend.status().online:
+        raise gr.Error(backend.OFFLINE_MESSAGE)
     session = new_session(session["user"])
     get_store().save_conversation(session["user"], [], [])
     yield session, chat_view(session, expand)
@@ -402,13 +408,14 @@ def start_conversation(session, model, level, scenario_key, expand):
     except gr.Error:
         raise
     except Exception as err:  # noqa: BLE001 – surface any backend error in the UI
-        raise gr.Error(f"Fehler beim Aufruf von Ollama: {err}") from err
+        raise gr.Error(backend.error_message(err)) from err
     yield session, chat_view(session, expand)
 
 
 def start_if_empty(session, model, level, scenario_key, expand):
-    """After switching users: continue their conversation, or open a new one."""
-    if session["entries"]:
+    """After switching users or when the Mac comes online: continue the conversation,
+    or open a new one (only possible while the Mac is on)."""
+    if session["entries"] or not backend.status().online:
         yield session, chat_view(session, expand)
     else:
         yield from start_conversation(session, model, level, scenario_key, expand)
@@ -431,7 +438,7 @@ def send_message(text, session, model, level, scenario_key, expand, voice=False)
         session["entries"].pop()
         if isinstance(err, gr.Error):
             raise
-        raise gr.Error(f"Fehler beim Aufruf von Ollama: {err}") from err
+        raise gr.Error(backend.error_message(err)) from err
     yield "", session, chat_view(session, expand)
 
 
@@ -490,6 +497,32 @@ def speak_last(session: dict, slow: bool):
     return speak_reply(session, True, slow)
 
 
+# --- Mac Mini status ------------------------------------------------------------
+
+
+def mac_view(model: str | None, force: bool = False):
+    """Outputs: chat banner, lookup banner, model picker, retry timer, online flag.
+    While the Mac is off, the timer checks again every few seconds."""
+    s = backend.status(force)
+    banner = gr.update(visible=not s.online)
+    if s.models:
+        value = model if model in s.models else pick_default_model(s.models, DEFAULT_MODEL)
+        model_update = gr.update(choices=s.models, value=value)
+    else:
+        model_update = gr.skip()
+    return banner, banner, model_update, gr.Timer(active=not s.online), s.online
+
+
+def mac_banner() -> tuple[gr.Row, gr.Button]:
+    with gr.Row(visible=False, equal_height=True, elem_classes="parla-mac-off") as row:
+        gr.HTML(
+            f'<div class="parla-mac-text">💤 {html.escape(backend.OFFLINE_MESSAGE)}</div>',
+            container=False, padding=False,
+        )
+        retry = gr.Button("🔄 Prüfen", size="sm", scale=0, min_width=0)
+    return row, retry
+
+
 # --- layout ------------------------------------------------------------------
 
 # Pages behind the burger menu: key -> menu label.
@@ -513,6 +546,8 @@ def build_app() -> gr.Blocks:
 
     with gr.Blocks(title="Parla – Sprachtrainer") as demo:
         session = gr.State(new_session())
+        mac_online = gr.State(None)  # None until the first check
+        mac_timer = gr.Timer(15, active=False)
         saved_user = gr.BrowserState(None, storage_key="parla_user")
 
         # Header: burger menu, page title and (on the chat page) "new conversation".
@@ -534,6 +569,7 @@ def build_app() -> gr.Blocks:
 
         pages = {}
         with gr.Column(visible=True, elem_id="parla-page-chat") as pages["chat"]:
+            chat_banner, chat_retry = mac_banner()
             chatbot = gr.Chatbot(
                 show_label=False, elem_id="parla-chat", height="calc(100dvh - 196px)", buttons=["copy"]
             )
@@ -590,6 +626,7 @@ def build_app() -> gr.Blocks:
 
 
         with gr.Column(visible=False) as pages["lookup"]:
+            lk_banner, lk_retry = mac_banner()
             lk_found = gr.State([])
             with gr.Row():
                 lk_query = gr.Textbox(
@@ -681,6 +718,7 @@ def build_app() -> gr.Blocks:
         user_outputs = [user, model, level, scenario, expand, speak, slow, voice_mode, pause, session, chatbot, saved_user, tr_list,
                         trainer, tr_card, tr_reveal, tr_known, tr_unknown, tr_missed, tr_round]
         chat_outputs = [session, chatbot]
+        mac_outputs = [chat_banner, lk_banner, model, mac_timer, mac_online]
 
         PLAY_JS = "(d) => window.parlaVoice?.play(d)"
         CONFIGURE_JS = '(mode, pause) => window.parlaVoice?.configure(mode === "free", pause)'
@@ -695,6 +733,8 @@ def build_app() -> gr.Blocks:
                 .then(speak_reply, inputs=[session, speak, slow], outputs=[session, tts_data])
                 .then(None, inputs=tts_data, js=PLAY_JS)
                 .then(lambda: gr.update(interactive=True), outputs=user, queue=False)
+                # After a failed call the status is re-checked, so the banner appears.
+                .then(mac_view, inputs=model, outputs=mac_outputs, queue=False, show_progress="hidden")
             )  # .then also runs after errors, so the selector is always unlocked again
 
         # On page load: restore the user remembered by this browser. The model list is
@@ -723,12 +763,22 @@ def build_app() -> gr.Blocks:
                 dep.then(None, js=FOCUS_MSG_JS).then(None, js="() => window.parlaVoice?.ui()")
 
         demo.load(None, js=FOCUS_MSG_JS)
-        locked(
+        # The conversation is opened by mac_online.change below, once the Mac is known to be on.
+        (
             demo.load(select_user, inputs=[saved_user, model], outputs=user_outputs)
             .then(None, inputs=[voice_mode, pause], js=CONFIGURE_JS)
-            .then(refresh_lists, refresh_inputs, refresh_outputs, queue=False),
-            start_if_empty, settings_inputs, chat_outputs,
+            .then(refresh_lists, refresh_inputs, refresh_outputs, queue=False)
+            .then(mac_view, inputs=model, outputs=mac_outputs, queue=False)
+            # Mac off: open the vocabulary trainer instead of a chat that can't answer.
+            .then(lambda on: show_page("trainer") if not on else [gr.skip()] * len(page_outputs),
+                  inputs=mac_online, outputs=page_outputs, queue=False)
         )
+        # Mac Mini status: retry button, automatic re-check while it is off, and
+        # opening the conversation as soon as it is on.
+        for retry in (chat_retry, lk_retry):
+            retry.click(lambda m: mac_view(m, force=True), inputs=model, outputs=mac_outputs, queue=False)
+        mac_timer.tick(mac_view, inputs=model, outputs=mac_outputs, queue=False, show_progress="hidden")
+        locked(mac_online.change(lambda: None, queue=False), start_if_empty, settings_inputs, chat_outputs)
         locked(
             user.input(select_user, inputs=[user, model], outputs=user_outputs)
             .then(None, inputs=[voice_mode, pause], js=CONFIGURE_JS)
