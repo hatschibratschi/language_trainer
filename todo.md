@@ -7,11 +7,8 @@ See "Running on the always-on server" in README.md.
 
 - [x] Ollama listens on `100.72.117.91:11434` (LaunchAgent plist updated)
 - [x] parla-speech listens on `100.72.117.91:11500` (agent reinstalled)
-- [ ] macOS firewall: both binaries are set to "Block incoming connections". Run (needs sudo):
-      ```bash
-      sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp /opt/homebrew/Cellar/ollama/0.40.13/libexec/ollama
-      sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp /Users/boehs/anaconda3/bin/python3.12
-      ```
+- [x] macOS firewall allows incoming connections for ollama and python3.12
+      (after `brew upgrade ollama` unblock the new Cellar path again, see README)
 - [x] Check from the server (2026-11-11, also from inside the container):
       `ssh adventurelog 'curl -s -m 3 http://100.72.117.91:11434/api/tags; curl -s -m 3 http://100.72.117.91:11500/health'`
 - [ ] Note: locally Ollama is now at `100.72.117.91:11434`, no longer at `localhost:11434`
