@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex" />
+<title>Parla — Passkeys</title>
+<style>
+  :root { color-scheme: light dark; --accent: #2e7d4f; }
+  body { font: 16px/1.5 -apple-system, system-ui, sans-serif; margin: 0; background: Canvas; color: CanvasText; }
+  main { width: min(32rem, 92vw); margin: 2rem auto; }
+  h1 { font-size: 1.5rem; }
+  a { color: var(--accent); }
+  ul { list-style: none; padding: 0; }
+  li { display: flex; align-items: center; gap: .8rem; padding: .7rem 0; border-bottom: 1px solid #8884; }
+  li div { flex: 1; }
+  small { opacity: .7; }
+  button { font: inherit; padding: .6rem 1rem; border: 0; border-radius: .6rem; cursor: pointer;
+           background: var(--accent); color: white; }
+  button.plain { background: transparent; color: inherit; border: 1px solid #8888; }
+  li button { background: transparent; padding: .3rem .5rem; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: .6rem; flex-wrap: wrap; }
+  .error { color: #d33; min-height: 1.5em; }
+</style>
+</head>
+<body>
+<main>
+  <p><a href="/">← Zurück zu Parla</a></p>
+  <h1>🔑 Passkeys</h1>
+  <p>Mit jedem dieser Passkeys kann man sich bei Parla anmelden.</p>
+  <ul id="list"></ul>
+  <div class="row">
+    <button type="button" id="add">🔑 Passkey hinzufügen</button>
+    <button type="button" class="plain" id="logout">Abmelden</button>
+  </div>
+  <p class="error" id="error"></p>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@simplewebauthn/browser@14.0.0/dist/bundle/index.umd.min.js"></script>
+<script>
+const list = document.getElementById("list");
+const addButton = document.getElementById("add");
+const error = document.getElementById("error");
+
+addButton.addEventListener("click", add);
+document.getElementById("logout").addEventListener("click", async () => {
+  await postJSON("/auth/logout");
+  location.replace("/login");
+});
+load();
+
+function date(iso) {
+  return iso ? new Date(iso).toLocaleDateString("de-AT") : "noch nie";
+}
+
+async function load() {
+  const res = await fetch("/auth/passkeys", { cache: "no-store" });
+  if (res.status === 401) return location.replace("/login");
+  list.replaceChildren();
+  for (const pk of await res.json()) {
+    const li = document.createElement("li");
+    const info = document.createElement("div");
+    info.append(pk.name, document.createElement("br"));
+    const meta = document.createElement("small");
+    meta.textContent = `angelegt ${date(pk.createdAt)} · zuletzt benutzt ${date(pk.lastUsedAt)}`;
+    info.append(meta);
+    const remove = document.createElement("button");
+    remove.textContent = "🗑️";
+    remove.title = "Entfernen";
+    remove.setAttribute("aria-label", `Passkey ${pk.name} entfernen`);
+    remove.addEventListener("click", () => removePasskey(pk));
+    li.append(info, remove);
+    list.append(li);
+  }
+}
+
+async function add() {
+  error.textContent = "";
+  if (!window.PublicKeyCredential) return (error.textContent = "Dieser Browser unterstützt keine Passkeys.");
+  const name = prompt("Name für diesen Passkey, z. B. iPhone oder MacBook:", "");
+  if (name === null) return;
+  addButton.disabled = true;
+  try {
+    const optionsJSON = await postJSON("/auth/passkeys/options");
+    const response = await SimpleWebAuthnBrowser.startRegistration({ optionsJSON });
+    await postJSON("/auth/passkeys/verify", { response, name });
+    await load();
+  } catch (err) {
+    // NotAllowedError: the user closed the passkey prompt.
+    if (err.name !== "NotAllowedError") error.textContent = err.message;
+  } finally {
+    addButton.disabled = false;
+  }
+}
+
+async function removePasskey(pk) {
+  if (!confirm(`Passkey „${pk.name}“ entfernen? Danach kann man sich damit nicht mehr anmelden.`)) return;
+  error.textContent = "";
+  try {
+    await postJSON("/auth/passkeys/remove", { id: pk.id });
+    await load();
+  } catch (err) {
+    error.textContent = err.message;
+  }
+}
+
+async function postJSON(url, body) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Server-Fehler ${res.status}.`);
+  return data;
+}
+</script>
+</body>
+</html>

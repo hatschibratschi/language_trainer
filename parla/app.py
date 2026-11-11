@@ -5,10 +5,14 @@ from __future__ import annotations
 import html
 import os
 import re
+import threading
+import webbrowser
 from functools import cache
 from pathlib import Path
 
 import gradio as gr
+import uvicorn
+from fastapi import FastAPI
 
 from parla.config import (
     DATA_DIR,
@@ -21,6 +25,7 @@ from parla.config import (
     SCENARIOS,
     USERS,
 )
+from parla import auth as passkeys
 from parla import backend, lookup, speech
 from parla.render import CSS, HEAD_CSS, render_chat
 from parla.theme import THEME, THEME_HEAD
@@ -725,6 +730,8 @@ def build_app() -> gr.Blocks:
             model = gr.Dropdown(choices=[], label="🤖 Modell", allow_custom_value=True)
             with gr.Accordion("⌨️ Tastenkürzel (Computer)", open=False):
                 gr.Markdown(SHORTCUTS_HELP)
+            if os.environ.get("PARLA_ORIGIN"):
+                gr.Markdown("[🔑 Passkeys verwalten · Abmelden](/passkeys)")
 
         settings_inputs = [session, model, level, scenario, expand]
         save_inputs = [*settings_inputs, speak, slow, voice_mode, pause]
@@ -854,15 +861,29 @@ def build_app() -> gr.Blocks:
 
 
 def main() -> None:
-    user, password = os.environ.get("PARLA_AUTH_USER"), os.environ.get("PARLA_AUTH_PASSWORD")
-    build_app().launch(
-        # Host/port come from GRADIO_SERVER_NAME / GRADIO_SERVER_PORT (default 127.0.0.1:7860).
+    host = os.environ.get("GRADIO_SERVER_NAME", "127.0.0.1")
+    port = int(os.environ.get("GRADIO_SERVER_PORT", "7860"))
+    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    # With PARLA_ORIGIN set, the whole app needs a passkey login (see parla/auth.py).
+    if login := passkeys.from_env(DATA_DIR):
+        app.include_router(passkeys.router(login))
+        app.add_middleware(passkeys.LoginRequired, auth=login)
+        print(f"Passkey login for {login.origin}", flush=True)
+    else:
+        print("No login (PARLA_ORIGIN not set)", flush=True)
+    app = gr.mount_gradio_app(
+        app,
+        build_app(),
+        path="/",
         theme=THEME,
         css=CSS,
         head=THEME_HEAD + HEAD_CSS + SHORTCUTS_JS + VOICE_JS,
-        inbrowser=os.environ.get("PARLA_OPEN_BROWSER", "1") == "1",
-        auth=(user, password) if user and password else None,
     )
+    if os.environ.get("PARLA_OPEN_BROWSER", "1") == "1":
+        url = f"http://{'localhost' if host in ('0.0.0.0', '127.0.0.1') else host}:{port}"
+        threading.Timer(1.5, webbrowser.open, [url]).start()
+    # Behind Caddy: trust X-Forwarded-Proto so Gradio builds https:// URLs.
+    uvicorn.run(app, host=host, port=port, proxy_headers=True, forwarded_allow_ips="*")
 
 
 if __name__ == "__main__":

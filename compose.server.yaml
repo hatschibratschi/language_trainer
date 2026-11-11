@@ -4,8 +4,7 @@
 #   COMPOSE_FILE=compose.yaml:compose.server.yaml
 #   OLLAMA_HOST=http://100.72.117.91:11434         # Mac Mini's Tailscale IP
 #   PARLA_SPEECH_HOST=http://100.72.117.91:11500
-#   PARLA_AUTH_USER=…                              # the site is public: set a password
-#   PARLA_AUTH_PASSWORD=…
+#   PARLA_ORIGIN=https://parla.178-104-161-250.sslip.io   # the site is public: passkey login
 #
 # The Tailscale IP is used instead of the MagicDNS name, because containers don't
 # resolve tailnet names. Caddy (from the adventurelog stack) serves the app over HTTPS.

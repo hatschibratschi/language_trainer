@@ -31,7 +31,7 @@ with the installed Google Chrome (no extra browser download). They always use th
 setup, defined in `scripts/test-server.sh`:
 
 - Parla on **http://127.0.0.1:7871**, with a fresh empty data directory (the real
-  `data/` is never touched) and without a password.
+  `data/` is never touched) and without a login.
 - Ollama and parla-speech point to an unused port, so the app runs as if the
   **Mac Mini were off** (banner shown, trainer opened first).
 
@@ -41,6 +41,10 @@ http://127.0.0.1:7871 is only reachable for those few seconds. To look at it you
 instead of starting their own. Every test runs twice: **phone** (390×844) and
 **desktop** (1280×800). The `page` fixture (`tests/ui/conftest.py`) waits until the page
 has finished loading before the test clicks.
+
+The passkey login has its own test (`tests/ui/test_login.py`): it starts a second Parla on
+http://localhost:7872 with `PARLA_ORIGIN` set and signs in with Chrome's virtual
+authenticator, so no Touch ID is needed.
 
 New UI tests: add a `test_*.py` in `tests/ui/`, mark it with `pytestmark = pytest.mark.ui`
 and use the `page` fixture. To click something the way a finger does (by position, e.g. an
@@ -57,7 +61,7 @@ it serves Ollama and parla-speech to the server over Tailscale.
 
 ```
   iPhone · iPad · browser
-         │  https://parla.178-104-161-250.sslip.io   (Caddy, password)
+         │  https://parla.178-104-161-250.sslip.io   (Caddy, passkeys)
 ┌────────▼──────────────────────────┐   Tailscale    ┌──────────────────────────┐
 │ adventurelog server (always on)   │ ─────────────▶ │ Mac Mini (on when needed)│
 │ parla container + SQLite          │  :11434 :11500 │ Ollama · parla-speech    │
@@ -143,8 +147,7 @@ Then open:
 ```bash
 PARLA_MODEL=gemma3:27b                      # optional, otherwise chosen automatically
 PARLA_USERS=hatschibratschi,bellaMelanto    # learners to choose from (default)
-PARLA_AUTH_USER=georg                       # optional: both set → shared password for the app
-PARLA_AUTH_PASSWORD=secret
+PARLA_ORIGIN=https://parla.example.org     # optional: public address → passkey login (see "Login")
 ```
 
 The container finds the speech service via `PARLA_SPEECH_HOST` (set in `compose.yaml` to
@@ -268,7 +271,7 @@ Single keys only work when no text field has the focus.
 
 ### Users and data
 
-There is no login. Each learner simply picks their name under **⚙️ Einstellungen →
+Choosing a user is not a login (see [Login](#login-passkeys) for that). Each learner simply picks their name under **⚙️ Einstellungen →
 "👤 Wer lernt?"**. Each user has their own:
 
 - settings (model, level, scenario, translation option)
@@ -280,6 +283,26 @@ answering. Add learners via `PARLA_USERS` (removing a name only hides it; its da
 
 The data lives in SQLite at `./data/parla.db` (mounted into the container as `/data`, not in Git).
 Back up this file to keep your progress.
+
+### Login (passkeys)
+
+With `PARLA_ORIGIN` set (on the server: `https://parla.178-104-161-250.sslip.io`), the whole app
+needs a **passkey** login: Touch ID / Face ID / device PIN, no passwords. Without it there is
+no login (local use, tests). The login is shared, like the old password: whoever signs in
+then picks the learner as before.
+
+- **First passkey:** while none exists, the server prints a one-time setup link:
+  `docker compose logs parla | grep setup=` → open it, name the device, done.
+- **More devices / remove / log out:** ⚙️ Einstellungen → "🔑 Passkeys verwalten · Abmelden"
+  (page `/passkeys`). A passkey synced via iCloud Keychain works on all your Apple devices;
+  on other devices (or for a second person) add one there while signed in. The last passkey
+  can't be removed.
+- A login lasts 30 days (signed `HttpOnly` cookie; no sessions stored on the server).
+- Passkeys are bound to the host name in `PARLA_ORIGIN`; a new address needs new passkeys.
+  The vacanze blog has its own (different host name).
+- Stored in `data/auth/` (`passkeys.json`, `session-secret`), not in the database backup.
+  If they get lost, the setup link simply appears again.
+- Same design as the vacanze blog editor (`parla/auth.py`, `parla/auth_pages/`).
 
 ### Autostart on macOS
 
@@ -302,7 +325,7 @@ This works because OrbStack exposes container ports to the LAN (`orb config show
 `docker.expose_ports_to_lan: true`). Notes:
 
 - **Use only on a trusted home network.** Selecting a user is not a login: anyone in the network can open the app and
-  pick any user. A shared password can be set with `PARLA_AUTH_USER`/`PARLA_AUTH_PASSWORD`. For access only from the Mac, set the port in `compose.yaml` to `"127.0.0.1:7860:7860"`.
+  pick any user. Passkey login needs HTTPS (or `localhost`), so it isn't an option on plain `http://<mac-ip>`. For access only from the Mac, set the port in `compose.yaml` to `"127.0.0.1:7860:7860"`.
 - If the macOS firewall is on, allow incoming connections for OrbStack.
 - Mac asleep = trainer unreachable. If needed, enable System Settings → Battery/Energy →
   "Prevent automatic sleeping when the display is off" (when on power).
@@ -311,8 +334,7 @@ This works because OrbStack exposes container ports to the LAN (`orb config show
 - Ollama and parla-speech stay reachable only on the Mac (`127.0.0.1`), so they are not exposed to the LAN.
 - **Voice needs HTTPS** on the iPhone, see [Using it on the iPhone](#using-it-on-the-iphone-https).
 - The browser shows **"Not secure"** for `http://` addresses. That is expected and fine here:
-  the traffic stays in your own network. Only a shared password (`PARLA_AUTH_PASSWORD`) would
-  travel unencrypted. The microphone, though, needs HTTPS (or `localhost`).
+  the traffic stays in your own network. The microphone, though, needs HTTPS (or `localhost`).
 
 **Status:** version 0.3 = roadmap steps 1 and 2: text chat with corrections, level, scenarios,
 vocabulary list and trainer, multiple users with stored settings, plus **voice mode**

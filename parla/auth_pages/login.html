@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex" />
+<title>Parla — Anmelden</title>
+<style>
+  :root { color-scheme: light dark; --accent: #2e7d4f; }
+  body { font: 16px/1.5 -apple-system, system-ui, sans-serif; margin: 0; min-height: 100vh;
+         display: grid; place-items: center; background: Canvas; color: CanvasText; }
+  main { width: min(22rem, 90vw); text-align: center; }
+  h1 { font-size: 1.6rem; margin: 0 0 1.5rem; }
+  button { font: inherit; width: 100%; padding: .8rem 1rem; border: 0; border-radius: .6rem;
+           background: var(--accent); color: white; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  input { font: inherit; width: 100%; box-sizing: border-box; padding: .7rem; margin-bottom: .8rem;
+          border: 1px solid #8888; border-radius: .6rem; background: transparent; color: inherit; }
+  .error { color: #d33; min-height: 1.5em; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>🇮🇹 Parla</h1>
+
+  <button type="button" id="passkeyButton" hidden>🔑 Mit Passkey anmelden</button>
+
+  <div id="setup" hidden>
+    <p>Es ist noch kein Passkey registriert. Lege den ersten für dieses Gerät an.</p>
+    <input type="text" id="setupName" placeholder="Name, z. B. iPhone oder MacBook" autocomplete="off" />
+    <button type="button" id="setupButton">🔑 Ersten Passkey anlegen</button>
+  </div>
+
+  <p class="error" id="loginError"></p>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@simplewebauthn/browser@14.0.0/dist/bundle/index.umd.min.js"></script>
+<script src="/auth/login.js"></script>
+</body>
+</html>

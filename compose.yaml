@@ -20,6 +20,5 @@ services:
       PARLA_DATA_DIR: /data
       PARLA_MODEL: ${PARLA_MODEL:-}
       PARLA_USERS: ${PARLA_USERS:-hatschibratschi,bellaMelanto}
-      # Optional shared password for the whole app (set both, e.g. in .env).
-      PARLA_AUTH_USER: ${PARLA_AUTH_USER:-}
-      PARLA_AUTH_PASSWORD: ${PARLA_AUTH_PASSWORD:-}
+      # Public address → passkey login for the whole app (see README "Login"). Empty: no login.
+      PARLA_ORIGIN: ${PARLA_ORIGIN:-}
