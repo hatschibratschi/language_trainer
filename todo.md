@@ -5,33 +5,22 @@ See "Running on the always-on server" in README.md.
 
 ## 1. Mac Mini: serve Ollama and parla-speech over Tailscale
 
-Both still listen on localhost only, so the server shows "💤 Mac Mini nicht erreichbar".
-Bind them to the Mac's Tailscale IP (not `0.0.0.0`, so the home LAN can't reach them):
-
-```bash
-sed -i '' 's#127.0.0.1:11434#100.72.117.91:11434#' ~/Library/LaunchAgents/com.ollama.server.plist
-launchctl bootout gui/$(id -u)/com.ollama.server
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ollama.server.plist
-PARLA_SPEECH_BIND=100.72.117.91 scripts/install-speech-agent.sh
-```
-
-- [ ] Ollama listens on `100.72.117.91:11434`
-- [ ] parla-speech listens on `100.72.117.91:11500`
-- [ ] If the macOS firewall asks: allow incoming connections
+- [x] Ollama listens on `100.72.117.91:11434` (LaunchAgent plist updated)
+- [x] parla-speech listens on `100.72.117.91:11500` (agent reinstalled)
+- [ ] macOS firewall: both binaries are set to "Block incoming connections". Run (needs sudo):
+      ```bash
+      sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp /opt/homebrew/Cellar/ollama/0.40.13/libexec/ollama
+      sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp /Users/boehs/anaconda3/bin/python3.12
+      ```
 - [ ] Check from the server:
       `ssh adventurelog 'curl -s -m 3 http://100.72.117.91:11434/api/tags; curl -s -m 3 http://100.72.117.91:11500/health'`
-- [ ] Note: locally Ollama is then at `100.72.117.91:11434`, no longer at `localhost:11434`
-- [ ] Both start via LaunchAgents at login → enable auto-login on the Mac so they come up
-      after switching it on
+- [ ] Note: locally Ollama is now at `100.72.117.91:11434`, no longer at `localhost:11434`
+- [ ] Enable auto-login on the Mac so the LaunchAgents come up after switching it on
 
 ## 2. Mac Mini: stop the old parla container
 
-Otherwise there are two databases that drift apart. The server's copy is from
-2026-11-10 18:11; the server is now the source of truth.
+- [x] `docker compose down` on the Mac (2026-11-11; the local DB was older than the server's)
 
-- [ ] `docker compose down` in this repo on the Mac
+## 3. Back up the server database
 
-## 3. Optional: back up the server database
-
-- [ ] Nightly backup of `data/parla.db` to Nextcloud, like `~/git/github/vacanze/backup.sh`
-      (use `sqlite3 .backup` for a consistent copy, cron on the server)
+- [x] `scripts/backup.sh`: nightly upload of `data/parla.db` to the vacanze Nextcloud share

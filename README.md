@@ -44,7 +44,15 @@ up, the banner disappears and the conversation starts.
 **Mac:** Ollama and parla-speech must listen on the Tailscale address, not only on
 localhost: in `~/Library/LaunchAgents/com.ollama.server.plist` set `OLLAMA_HOST` to
 `100.72.117.91:11434` (or `0.0.0.0:11434`), and install the speech agent with
-`PARLA_SPEECH_BIND=100.72.117.91 scripts/install-speech-agent.sh`.
+`PARLA_SPEECH_BIND=100.72.117.91 scripts/install-speech-agent.sh`. The macOS firewall must
+allow incoming connections for both binaries (the real paths, not the symlinks):
+
+```bash
+sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp "$(realpath /opt/homebrew/bin/ollama)"
+sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp "$(realpath .venv/bin/python)"
+```
+
+After `brew upgrade ollama` the Cellar path changes, so run the first line again.
 
 **Server** (`~/git/github/language_trainer`, `.env` as described in `compose.server.yaml`):
 
@@ -53,6 +61,11 @@ git pull && docker compose up -d --build
 ```
 
 Caddy (`~/adventurelog/caddy/Caddyfile`) has `parla.178-104-161-250.sslip.io { reverse_proxy parla:7860 }`.
+
+**Backup:** `scripts/backup.sh` uploads a consistent copy of `data/parla.db`
+(`parla-YYYYMMDD-HHMM.db.gz`, newest 40 kept) to the same Nextcloud share as the vacanze
+blog; it needs `NEXTCLOUD_SHARE_URL` / `NEXTCLOUD_SHARE_PASSWORD` in `.env`. Cron on the server:
+`45 3 * * * ~/git/github/language_trainer/scripts/backup.sh >> ~/git/github/language_trainer/backup.log 2>&1`
 
 ## Running as a web server in Docker (OrbStack)
 
