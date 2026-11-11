@@ -173,7 +173,7 @@ def round_html(t: dict) -> str:
         '<div class="parla-round-row">'
         f'<span class="parla-round-count">Karte <b>{i + 1}</b> / {len(cards)}</span>'
         f'<span class="parla-round-box" title="Fach 1 = neu/schwer, 6 = sitzt">Fach {box}</span>'
-        f'<span class="parla-round-score">✅ {known} · ❌ {missed}</span>'
+        f'<span class="parla-round-score">❌ {missed} · ✅ {known}</span>'  # same order as the buttons
         "</div>"
         f'<div class="parla-round-bar"><div style="width: {pct}%"></div></div>'
         "</div>"
