@@ -58,7 +58,7 @@ DEFAULT_LEVEL = "A2"
 @dataclass(frozen=True)
 class Scenario:
     key: str
-    label: str  # shown in the UI (German)
+    label: str  # shown in the UI (short, Italian)
     prompt: str  # instructions for the model (English)
 
 
@@ -67,43 +67,43 @@ SCENARIOS: dict[str, Scenario] = {
     for s in [
         Scenario(
             "free",
-            "Freies Gespräch",
+            "Libero",
             "Have a friendly free conversation. Ask the learner about their day, "
             "hobbies, work or travel plans and keep the conversation going.",
         ),
         Scenario(
             "bar",
-            "Al bar – Im Café",
+            "Al bar",
             "You are a barista in a busy Italian bar in the morning. The learner is a "
             "customer ordering coffee and something to eat, then paying.",
         ),
         Scenario(
             "hotel",
-            "In albergo – Im Hotel",
+            "In albergo",
             "You are the receptionist of a small hotel in Florence. The learner is "
             "checking in; ask about the booking, documents, breakfast and wifi.",
         ),
         Scenario(
             "ristorante",
-            "Al ristorante – Im Restaurant",
+            "Al ristorante",
             "You are a waiter in a trattoria in Rome. Present the menu, take the "
             "order, recommend dishes and bring the bill at the end.",
         ),
         Scenario(
             "direzioni",
-            "Chiedere indicazioni – Nach dem Weg fragen",
+            "Indicazioni",
             "You are a local passer-by in Bologna. The learner asks you for directions "
             "(to the station, a museum, a pharmacy). Give clear directions.",
         ),
         Scenario(
             "medico",
-            "Dal medico – Beim Arzt",
+            "Dal medico",
             "You are a general practitioner. The learner is a patient describing "
             "symptoms. Ask questions and give simple advice.",
         ),
         Scenario(
             "collega",
-            "Small Talk mit Kollegen",
+            "Tra colleghi",
             "You are a friendly Italian colleague at the coffee machine at work. "
             "Make small talk about the weekend, work and plans.",
         ),

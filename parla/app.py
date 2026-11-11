@@ -529,15 +529,15 @@ def mac_banner() -> tuple[gr.Row, gr.Button]:
 # Pages: key -> title. NAV_LABELS: icon and short name for the tab bar / sidebar
 # (CSS puts the icon above the name on phones; on desktop the line break is a space).
 PAGES = {
-    "chat": "💬 Gespräch",
     "trainer": "🗂️ Vokabeltrainer",
+    "chat": "💬 Gespräch",
     "lookup": "🔎 Nachschlagen",
     "editor": "✏️ Listen bearbeiten",
     "settings": "⚙️ Einstellungen",
 }
 NAV_LABELS = {
-    "chat": "💬\nGespräch",
     "trainer": "🗂️\nTrainer",
+    "chat": "💬\nGespräch",
     "lookup": "🔎\nSuchen",
     "editor": "✏️\nListen",
     "settings": "⚙️\nMehr",
@@ -559,10 +559,15 @@ def build_app() -> gr.Blocks:
         mac_timer = gr.Timer(15, active=False)
         saved_user = gr.BrowserState(None, storage_key="parla_user")
 
-        # Header (app bar): page title, "new conversation" (chat page) and day/night.
+        # Header (app bar): page title, "new conversation" and scene (chat page), day/night.
         with gr.Row(elem_id="parla-header", equal_height=True):
             title = gr.HTML(f'<div class="parla-title">{PAGES["chat"]}</div>', elem_id="parla-title")
             restart = gr.Button("🔄 Neu", elem_id="parla-restart", scale=0, min_width=0)
+            # Changing the scene starts a new conversation.
+            scenario = gr.Dropdown(
+                SCENARIO_CHOICES, value=DEFAULT_SCENARIO, show_label=False, container=False,
+                elem_id="parla-scenario", scale=0, min_width=0,
+            )
             # Day/night switch: handled in the browser by THEME_HEAD.
             gr.HTML('<button id="parla-theme-btn" type="button" title="Tag/Nacht"></button>',
                     elem_id="parla-theme-wrap", padding=False, container=False, scale=0, min_width=0)
@@ -706,12 +711,7 @@ def build_app() -> gr.Blocks:
 
         with gr.Column(visible=False) as pages["settings"]:
             user = gr.Dropdown(USERS, value=USERS[0], label="👤 Wer lernt?")
-            with gr.Group():
-                level = gr.Radio(list(LEVELS), value=DEFAULT_LEVEL, label="Niveau (GER)")
-                scenario = gr.Dropdown(
-                    SCENARIO_CHOICES, value=DEFAULT_SCENARIO,
-                    label="Szenario (ändern startet ein neues Gespräch)",
-                )
+            level = gr.Radio(list(LEVELS), value=DEFAULT_LEVEL, label="Niveau (GER)")
             with gr.Group():
                 speak = gr.Checkbox(value=True, label="🔊 Antworten vorlesen")
                 slow = gr.Checkbox(value=False, label="🐢 Langsam vorlesen")
@@ -765,9 +765,10 @@ def build_app() -> gr.Blocks:
                 *(gr.update(variant="primary" if k == key else "secondary") for k in nav),
                 f'<div class="parla-title">{PAGES[key]}</div>',
                 gr.update(visible=key == "chat"),
+                gr.update(visible=key == "chat"),
             ]
 
-        page_outputs = [*pages.values(), *nav.values(), title, restart]
+        page_outputs = [*pages.values(), *nav.values(), title, restart, scenario]
         for key, button in nav.items():
             dep = button.click(lambda k=key: show_page(k), outputs=page_outputs, queue=False)
             if key == "editor":

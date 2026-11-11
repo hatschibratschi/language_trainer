@@ -33,7 +33,7 @@ SHORTCUTS_JS = """
     return true;
   }
 
-  const PAGES = ["chat", "trainer", "lookup", "editor", "settings"];
+  const PAGES = ["trainer", "chat", "lookup", "editor", "settings"];
   function selectPage(n) {
     const b = PAGES[n] && button("parla-nav-" + PAGES[n]);
     if (!b) return false;
@@ -78,7 +78,7 @@ SHORTCUTS_JS = """
 SHORTCUTS_HELP = """
 | Taste | Wirkung |
 |---|---|
-| **⌥ 1** … **⌥ 5** | Seite wechseln (Gespräch, Vokabeltrainer, Nachschlagen, Listen bearbeiten, Einstellungen) |
+| **⌥ 1** … **⌥ 5** | Seite wechseln (Vokabeltrainer, Gespräch, Nachschlagen, Listen bearbeiten, Einstellungen) |
 | **⌥ R** | 🎙️ Aufnahme starten / stoppen (stoppen = senden) · freihändig: an / aus |
 | **⌥ P** | 🔊 Letzte Antwort nochmal anhören |
 | **⌥ T** | Übersetzung der letzten Antwort auf-/zuklappen |

@@ -42,6 +42,17 @@ button.primary:active, button.secondary:active, button.stop:active { transform: 
 .parla-title { font-family: "Patrick Hand", "Comic Sans MS", cursive; font-size: 1.75em; line-height: 1.1;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #parla-restart { flex: 0 0 auto !important; white-space: nowrap; height: 40px; padding: 0 16px; }
+#parla-scenario { flex: 0 0 auto !important; width: 9.5em !important; }
+#parla-scenario > div > .wrap { min-height: 0; height: 40px; padding: 0 8px 0 14px; border-radius: 999px; }
+#parla-scenario .wrap-inner { padding: 0; }
+#parla-scenario .secondary-wrap { display: flex; align-items: center; }
+#parla-scenario input { flex: 1 1 auto; min-width: 0; height: auto; padding: 0; margin: 0; font-weight: 700;
+  text-align: left; text-overflow: ellipsis; }
+#parla-scenario .icon-wrap { position: static; flex: 0 0 auto; width: 16px; margin: 0; transform: none; }
+@media (max-width: 899px) {
+  #parla-restart { padding: 0 10px; }
+  #parla-scenario { width: 8.5em !important; }
+}
 /* Day/night switch (behaviour in theme.py); the icon shows what you switch to. */
 #parla-theme-wrap { flex: 0 0 auto !important; width: fit-content !important; }
 #parla-theme-btn {
