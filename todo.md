@@ -11,7 +11,7 @@ See "Running on the always-on server" in README.md.
       (after `brew upgrade ollama` unblock the new Cellar path again, see README)
 - [x] Check from the server (2026-11-11, also from inside the container):
       `ssh adventurelog 'curl -s -m 3 http://100.72.117.91:11434/api/tags; curl -s -m 3 http://100.72.117.91:11500/health'`
-- [ ] Note: locally Ollama is now at `100.72.117.91:11434`, no longer at `localhost:11434`
+- [x] Locally Ollama is now at `100.72.117.91:11434`: `OLLAMA_HOST` set in `~/.zshrc`
 - [ ] Enable auto-login on the Mac so the LaunchAgents come up after switching it on
 
 ## 2. Mac Mini: stop the old parla container
