@@ -20,20 +20,27 @@ uv run pytest                 # run tests (unit tests; see "Tests" for the brows
 ## Tests
 
 ```bash
-uv run pytest                 # unit tests (fast, no browser)
-uv run pytest -m ui           # browser (UI) tests in tests/ui
+uv run pytest                     # unit tests (fast, no browser)
+uv run pytest -m ui               # browser (UI) tests in tests/ui
+PARLA_UI_HEADED=1 uv run pytest -m ui   # same, but watch Chrome click through (slowed down)
+scripts/test-server.sh            # start the test setup yourself and open it in the browser
 ```
 
 The **browser tests** live in `tests/ui/` and use [Playwright](https://playwright.dev/python/)
-with the installed Google Chrome (no extra browser download). Always the same setup, defined
-in `tests/ui/conftest.py`:
+with the installed Google Chrome (no extra browser download). They always use the same
+setup, defined in `scripts/test-server.sh`:
 
-- Parla is started as a subprocess on **http://127.0.0.1:7871** with a fresh temporary
-  data directory (the real `data/` is never touched) and without a password.
+- Parla on **http://127.0.0.1:7871**, with a fresh empty data directory (the real
+  `data/` is never touched) and without a password.
 - Ollama and parla-speech point to an unused port, so the app runs as if the
   **Mac Mini were off** (banner shown, trainer opened first).
-- Every test runs twice: **phone** (390×844) and **desktop** (1280×800).
-- The `page` fixture waits until the page has finished loading before the test clicks.
+
+`uv run pytest -m ui` starts this server, runs the tests and stops it again, so
+http://127.0.0.1:7871 is only reachable for those few seconds. To look at it yourself, run
+`scripts/test-server.sh` (Ctrl-C stops it); while it runs, the tests use that server
+instead of starting their own. Every test runs twice: **phone** (390×844) and
+**desktop** (1280×800). The `page` fixture (`tests/ui/conftest.py`) waits until the page
+has finished loading before the test clicks.
 
 New UI tests: add a `test_*.py` in `tests/ui/`, mark it with `pytestmark = pytest.mark.ui`
 and use the `page` fixture. To click something the way a finger does (by position, e.g. an

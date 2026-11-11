@@ -1,49 +1,47 @@
-"""Browser tests: start Parla in a subprocess and drive it with Playwright.
+"""Browser tests: drive Parla with Playwright in the installed Google Chrome.
 
-Always the same setup (see README "UI tests"): port 7871, a fresh temporary data
-directory, and Ollama / parla-speech pointed at an unused port, so the app runs as
-if the Mac Mini were off. The browser is the installed Google Chrome.
+The app runs in the test setup from scripts/test-server.sh (see README "Tests"):
+http://127.0.0.1:7871, fresh data directory, "Mac Mini off". If that server is
+already running (you started the script yourself), the tests use it; otherwise they
+start it and stop it afterwards. PARLA_UI_HEADED=1 shows the browser while testing.
 """
 
 from __future__ import annotations
 
 import os
 import subprocess
-import sys
 import time
 import urllib.request
+from pathlib import Path
 
 import pytest
 
-PORT = 7871
-URL = f"http://127.0.0.1:{PORT}"
-DEAD = "http://127.0.0.1:9"  # nothing listens there: "Mac Mini off"
+URL = "http://127.0.0.1:7871"
+SCRIPT = Path(__file__).parents[2] / "scripts" / "test-server.sh"
+
+
+def running() -> bool:
+    try:
+        urllib.request.urlopen(URL, timeout=1)
+        return True
+    except OSError:
+        return False
 
 
 @pytest.fixture(scope="session")
 def app_url(tmp_path_factory):
-    env = {
-        **os.environ,
-        "GRADIO_SERVER_NAME": "127.0.0.1",
-        "GRADIO_SERVER_PORT": str(PORT),
-        "PARLA_OPEN_BROWSER": "0",
-        "PARLA_DATA_DIR": str(tmp_path_factory.mktemp("data")),
-        "OLLAMA_HOST": DEAD,
-        "PARLA_SPEECH_HOST": DEAD,
-    }
-    for key in ("PARLA_AUTH_USER", "PARLA_AUTH_PASSWORD"):
-        env.pop(key, None)
-    proc = subprocess.Popen([sys.executable, "-m", "parla.app"], env=env,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
+    if running():
+        yield URL
+        return
+    env = {**os.environ, "PARLA_OPEN_BROWSER": "0", "PARLA_TEST_DATA": str(tmp_path_factory.mktemp("data"))}
+    proc = subprocess.Popen([SCRIPT], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
     try:
-        for _ in range(60):
-            try:
-                urllib.request.urlopen(URL, timeout=1)
+        for _ in range(120):
+            if running():
                 break
-            except OSError:
-                if proc.poll() is not None:
-                    pytest.fail("Parla exited during startup")
-                time.sleep(0.5)
+            if proc.poll() is not None:
+                pytest.fail("Parla exited during startup")
+            time.sleep(0.5)
         else:
             pytest.fail(f"Parla did not start on {URL}")
         yield URL
@@ -57,7 +55,8 @@ def browser():
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as p:
-        b = p.chromium.launch(channel="chrome")
+        headed = os.environ.get("PARLA_UI_HEADED") == "1"
+        b = p.chromium.launch(channel="chrome", headless=not headed, slow_mo=500 if headed else 0)
         yield b
         b.close()
 
