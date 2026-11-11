@@ -180,6 +180,41 @@ def round_html(t: dict) -> str:
     )
 
 
+def result_html(known: int, total: int) -> str:
+    """Round result: donut chart (green = known, red = not known) with the percentage inside."""
+    pct = round(100 * known / total) if total else 0
+    emoji = "🎉" if pct >= 80 else "👍" if pct >= 50 else "💪"
+    r = 52
+    circ = 2 * 3.14159265 * r
+    # pathLength=100 lets the dash lengths be percentages.
+    return (
+        '<div class="parla-result">'
+        f'<svg viewBox="0 0 120 120" role="img" aria-label="{pct} % gewusst">'
+        f'<circle class="parla-result-miss" cx="60" cy="60" r="{r}" pathLength="100"/>'
+        f'<circle class="parla-result-known" cx="60" cy="60" r="{r}" pathLength="100" '
+        f'stroke-dasharray="{pct} 100" transform="rotate(-90 60 60)"/>'
+        f'<text x="60" y="60" class="parla-result-pct">{pct}%</text>'
+        "</svg>"
+        f'<div class="parla-result-text">{emoji} {known} von {total} gewusst</div>'
+        "</div>"
+    )
+
+
+def missed_html(missed: list) -> str:
+    """Plain two-column table of the words not known in this round."""
+    if not missed:
+        return ""
+    rows = "".join(
+        f"<tr><td>{html.escape(de)}</td><td>{html.escape(it)}</td></tr>" for de, it in missed
+    )
+    return (
+        '<div class="parla-missed">'
+        "<h3>Nicht gewusst – schau sie dir nochmal an</h3>"
+        "<table><thead><tr><th>Deutsch</th><th>Italienisch</th></tr></thead>"
+        f"<tbody>{rows}</tbody></table></div>"
+    )
+
+
 def trainer_view(t: dict, user: str | None):
     """Outputs: trainer state, card, reveal/known/unknown buttons, missed table, round header."""
     cards, i = t["cards"], t["i"]
@@ -190,8 +225,8 @@ def trainer_view(t: dict, user: str | None):
     elif cards:  # round finished
         known = len(cards) - len(t["missed"])
         card = (
-            f'<div class="parla-card"><div class="parla-card-prompt">'
-            f"🎉 Runde fertig: {known} von {len(cards)} gewusst</div>"
+            '<div class="parla-card">'
+            + result_html(known, len(cards))
             + ("" if t["missed"] else '<div class="parla-card-note">Alles gewusst – bravissimo!</div>')
             + "</div>"
         )
@@ -206,7 +241,7 @@ def trainer_view(t: dict, user: str | None):
         gr.update(visible=in_round and not t["revealed"]),
         gr.update(visible=in_round and t["revealed"]),
         gr.update(visible=in_round and t["revealed"]),
-        gr.update(value=t["missed"], visible=bool(cards) and not in_round and bool(t["missed"])),
+        gr.update(value=missed_html(t["missed"]), visible=bool(cards) and not in_round and bool(t["missed"])),
         round_html(t),
     )
 
@@ -638,14 +673,7 @@ def build_app() -> gr.Blocks:
                 tr_reveal = gr.Button("👀 Aufdecken", variant="primary", visible=False, elem_id="parla-reveal")
                 tr_unknown = gr.Button("❌ Nicht gewusst", variant="stop", visible=False, elem_id="parla-unknown")
                 tr_known = gr.Button("✅ Gewusst", variant="primary", visible=False, elem_id="parla-known")
-            tr_missed = gr.Dataframe(
-                headers=["Deutsch", "Italienisch"],
-                value=[],
-                interactive=False,
-                wrap=True,
-                label="Nicht gewusst – schau sie dir nochmal an",
-                visible=False,
-            )
+            tr_missed = gr.HTML(visible=False)
 
 
         with gr.Column(visible=False) as pages["lookup"]:

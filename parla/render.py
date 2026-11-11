@@ -214,6 +214,34 @@ button.primary:active, button.secondary:active, button.stop:active { transform: 
 .parla-round-bar { height: 8px; border-radius: 999px; overflow: hidden;
   background: color-mix(in srgb, var(--body-text-color) 10%, transparent); }
 .parla-round-bar > div { height: 100%; border-radius: 999px; background: #2fb171; transition: width 0.35s ease; }
+/* Round result: donut chart, green share = known. */
+.parla-result { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.parla-result svg { width: 150px; height: 150px; }
+.parla-result circle { fill: none; stroke-width: 14; }
+.parla-result-miss { stroke: #e5484d; opacity: 0.85; }
+.parla-result-known { stroke: #2fb171; stroke-linecap: butt; transition: stroke-dasharray 0.6s ease; }
+.parla-result-pct { font-size: 26px; font-weight: 800; text-anchor: middle; dominant-baseline: central;
+  fill: var(--body-text-color); }
+.parla-result-text { font-family: "Patrick Hand", "Comic Sans MS", cursive; font-size: 1.8em; line-height: 1.2; }
+/* Words not known: plain table, two equal columns, long entries wrap. */
+.parla-missed {
+  padding: 14px 16px 6px; border-radius: 18px; background: var(--block-background-fill);
+  box-shadow: 0 2px 6px rgba(43, 58, 85, 0.06), 0 10px 28px rgba(43, 58, 85, 0.08);
+}
+.dark .parla-missed { box-shadow: none; border: 1px solid rgba(243, 241, 231, 0.15); }
+.parla-missed h3 { font-size: 0.95em; font-weight: 700; margin: 0 0 6px; opacity: 0.75; }
+.parla-missed table { width: 100%; table-layout: fixed; border-collapse: collapse; border: none !important; margin: 0; }
+.parla-missed th, .parla-missed td {
+  width: 50%; padding: 9px 8px !important; text-align: left; vertical-align: top;
+  overflow-wrap: anywhere; white-space: normal; background: transparent !important;
+  border: none !important;
+  border-bottom: 1px solid color-mix(in srgb, var(--body-text-color) 12%, transparent) !important;
+}
+.parla-missed tr { border: none !important; background: transparent !important; }
+.parla-missed tr:last-child td { border-bottom: none !important; }
+.parla-missed th { font-size: 0.8em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.6; }
+.parla-missed td:last-child { color: #2f6fd6; }
+.dark .parla-missed td:last-child { color: #ffd866; }
 #parla-answer-row { gap: 12px !important; margin-top: 12px; }
 @media (max-width: 640px) { #parla-trainer-top { flex-direction: column !important; align-items: stretch; } }
 #parla-start { min-height: 48px; }
