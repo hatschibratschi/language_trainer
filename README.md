@@ -54,6 +54,17 @@ sudo /usr/libexec/ApplicationFirewall/socketfilterfw --unblockapp "$(realpath .v
 
 After `brew upgrade ollama` the Cellar path changes, so run the first line again.
 
+On the Mac itself Ollama is then no longer at `localhost:11434`; `~/.zshrc` has
+`export OLLAMA_HOST=100.72.117.91:11434` so the `ollama` CLI still finds it.
+Check from the server:
+
+```bash
+ssh adventurelog 'curl -s -m 3 http://100.72.117.91:11434/api/tags; curl -s -m 3 http://100.72.117.91:11500/health'
+```
+
+The server's `data/parla.db` is the only database (moved there on 2026-11-10). Don't start
+the parla container on the Mac as well, or two databases drift apart.
+
 **Server** (`~/git/github/language_trainer`, `.env` as described in `compose.server.yaml`):
 
 ```bash
