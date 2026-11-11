@@ -23,6 +23,7 @@ from parla.config import (
 )
 from parla import backend, lookup, speech
 from parla.render import CSS, HEAD_CSS, render_chat
+from parla.theme import THEME, THEME_HEAD
 from parla.shortcuts import SHORTCUTS_HELP, SHORTCUTS_JS
 from parla.voice_ui import VOICE_JS
 from parla.store import BOXES, DEFAULT_LIST, Settings, Store
@@ -525,13 +526,21 @@ def mac_banner() -> tuple[gr.Row, gr.Button]:
 
 # --- layout ------------------------------------------------------------------
 
-# Pages behind the burger menu: key -> menu label.
+# Pages: key -> title. NAV_LABELS: icon and short name for the tab bar / sidebar
+# (CSS puts the icon above the name on phones; on desktop the line break is a space).
 PAGES = {
     "chat": "💬 Gespräch",
     "trainer": "🗂️ Vokabeltrainer",
     "lookup": "🔎 Nachschlagen",
     "editor": "✏️ Listen bearbeiten",
     "settings": "⚙️ Einstellungen",
+}
+NAV_LABELS = {
+    "chat": "💬\nGespräch",
+    "trainer": "🗂️\nTrainer",
+    "lookup": "🔎\nSuchen",
+    "editor": "✏️\nListen",
+    "settings": "⚙️\nMehr",
 }
 
 # Desktop only: put the cursor into the message box (on phones that would pop up the keyboard).
@@ -550,13 +559,15 @@ def build_app() -> gr.Blocks:
         mac_timer = gr.Timer(15, active=False)
         saved_user = gr.BrowserState(None, storage_key="parla_user")
 
-        # Header: burger menu, page title and (on the chat page) "new conversation".
+        # Header (app bar): page title, "new conversation" (chat page) and day/night.
         with gr.Row(elem_id="parla-header", equal_height=True):
-            gr.Button("☰", elem_id="parla-burger", scale=0, min_width=44)
             title = gr.HTML(f'<div class="parla-title">{PAGES["chat"]}</div>', elem_id="parla-title")
             restart = gr.Button("🔄 Neu", elem_id="parla-restart", scale=0, min_width=0)
+            # Day/night switch: handled in the browser by THEME_HEAD.
+            gr.HTML('<button id="parla-theme-btn" type="button" title="Tag/Nacht"></button>',
+                    elem_id="parla-theme-wrap", padding=False, container=False, scale=0, min_width=0)
 
-        # Slide-in menu; opened and closed by SHORTCUTS_JS (no server round trip).
+        # Navigation: bottom tab bar on phones, fixed sidebar on desktop (CSS only).
         with gr.Column(elem_id="parla-nav"):
             gr.HTML(
                 f'<div class="parla-nav-head">🇮🇹 Parla<div class="parla-nav-sub">{PAIR.label}</div></div>'
@@ -564,38 +575,40 @@ def build_app() -> gr.Blocks:
             nav = {
                 key: gr.Button(label, elem_id=f"parla-nav-{key}", elem_classes="parla-nav-item",
                                variant="primary" if key == "chat" else "secondary")
-                for key, label in PAGES.items()
+                for key, label in NAV_LABELS.items()
             }
 
         pages = {}
         with gr.Column(visible=True, elem_id="parla-page-chat") as pages["chat"]:
             chat_banner, chat_retry = mac_banner()
             chatbot = gr.Chatbot(
-                show_label=False, elem_id="parla-chat", height="calc(100dvh - 196px)", buttons=["copy"]
+                show_label=False, elem_id="parla-chat", height="calc(100dvh - var(--parla-chat-offset, 228px))", buttons=["copy"]
             )
-            with gr.Row(elem_id="parla-voice", equal_height=True):
-                # Hold to talk / hands-free: handled in the browser by VOICE_JS.
-                gr.HTML(
-                    '<button id="parla-talk" type="button">🎙️ Halten zum Sprechen</button>',
-                    elem_id="parla-talk-wrap",
-                    padding=False,
-                    container=False,
-                    scale=1,
-                    min_width=0,
-                )
-                replay = gr.Button("🔊", scale=0, min_width=48, elem_id="parla-replay")
-            with gr.Row(elem_id="parla-input", equal_height=True):
-                msg = gr.Textbox(
-                    placeholder="Scrivi in italiano…",
-                    show_label=False,
-                    container=False,
-                    lines=1,
-                    max_lines=4,
-                    scale=1,
-                    min_width=0,
-                    elem_id="parla-msg",
-                )
-                send = gr.Button("➤", variant="primary", scale=0, min_width=48, elem_id="parla-send")
+            # Composer: one floating card with the voice button and the text field.
+            with gr.Column(elem_id="parla-composer"):
+                with gr.Row(elem_id="parla-voice", equal_height=True):
+                    # Hold to talk / hands-free: handled in the browser by VOICE_JS.
+                    gr.HTML(
+                        '<button id="parla-talk" type="button">🎙️ Halten zum Sprechen</button>',
+                        elem_id="parla-talk-wrap",
+                        padding=False,
+                        container=False,
+                        scale=1,
+                        min_width=0,
+                    )
+                    replay = gr.Button("🔊", scale=0, min_width=48, elem_id="parla-replay")
+                with gr.Row(elem_id="parla-input", equal_height=True):
+                    msg = gr.Textbox(
+                        placeholder="Scrivi in italiano…",
+                        show_label=False,
+                        container=False,
+                        lines=1,
+                        max_lines=4,
+                        scale=1,
+                        min_width=0,
+                        elem_id="parla-msg",
+                    )
+                    send = gr.Button("➤", variant="primary", scale=0, min_width=48, elem_id="parla-send")
 
         # Hidden: the browser's recording goes up through voice_data (#parla-voice-send is
         # clicked when one is ready), the tutor's spoken reply comes back through tts_data.
@@ -606,7 +619,7 @@ def build_app() -> gr.Blocks:
 
         with gr.Column(visible=False) as pages["trainer"]:
             trainer = gr.State(new_trainer())
-            with gr.Row():
+            with gr.Row(elem_id="parla-trainer-top"):
                 tr_list = gr.Dropdown([ALL_LISTS], value=ALL_LISTS, label="Liste", scale=2)
                 tr_start = gr.Button(f"▶️ Neue Runde ({ROUND_SIZE} Wörter)", variant="primary", scale=1, elem_id="parla-start")
             tr_round = gr.HTML()
@@ -843,8 +856,9 @@ def main() -> None:
     user, password = os.environ.get("PARLA_AUTH_USER"), os.environ.get("PARLA_AUTH_PASSWORD")
     build_app().launch(
         # Host/port come from GRADIO_SERVER_NAME / GRADIO_SERVER_PORT (default 127.0.0.1:7860).
+        theme=THEME,
         css=CSS,
-        head=HEAD_CSS + SHORTCUTS_JS + VOICE_JS,
+        head=THEME_HEAD + HEAD_CSS + SHORTCUTS_JS + VOICE_JS,
         inbrowser=os.environ.get("PARLA_OPEN_BROWSER", "1") == "1",
         auth=(user, password) if user and password else None,
     )
