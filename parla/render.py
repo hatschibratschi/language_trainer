@@ -86,13 +86,15 @@ button.primary:active, button.secondary:active, button.stop:active { transform: 
 
 @media (max-width: 899px) {
   #parla-nav {
-    top: auto; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom));
-    width: auto !important; height: 66px; flex-direction: row !important; gap: 2px; padding: 6px;
-    border-radius: 24px; border: 1px solid var(--border-color-primary);
-    background: color-mix(in srgb, var(--background-fill-primary) 88%, transparent);
-    box-shadow: 0 8px 30px rgba(43, 58, 85, 0.16);
+    /* Docked edge to edge like an iOS tab bar: no rounded corners to get cut off by
+       the phone's display corners; a hairline on top separates it from the page. */
+    top: auto; left: 0; right: 0; bottom: 0;
+    width: auto !important; height: calc(66px + env(safe-area-inset-bottom));
+    flex-direction: row !important; gap: 2px;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    border: none; border-top: 1px solid var(--border-color-primary); border-radius: 0;
+    background: color-mix(in srgb, var(--background-fill-primary) 92%, transparent);
   }
-  .dark #parla-nav { box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4); }
   #parla-nav > div:first-child { display: none !important; }  /* the "Parla" heading */
   .parla-nav-item {
     display: block !important; flex: 1 1 0 !important; height: 100%; padding: 4px 0 !important;
@@ -240,8 +242,6 @@ button.primary:active, button.secondary:active, button.stop:active { transform: 
 .parla-missed tr { border: none !important; background: transparent !important; }
 .parla-missed tr:last-child td { border-bottom: none !important; }
 .parla-missed th { font-size: 0.8em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.6; }
-.parla-missed td:last-child { color: #2f6fd6; }
-.dark .parla-missed td:last-child { color: #ffd866; }
 #parla-answer-row { gap: 12px !important; margin-top: 12px; }
 @media (max-width: 640px) { #parla-trainer-top { flex-direction: column !important; align-items: stretch; } }
 #parla-start { min-height: 48px; }
