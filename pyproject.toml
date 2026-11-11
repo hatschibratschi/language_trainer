@@ -26,7 +26,13 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "pytest>=9.2.0",
+    "playwright>=1.50",
 ]
 
 [tool.uv.build-backend]
 module-root = ""
+
+[tool.pytest.ini_options]
+# Browser tests (tests/ui) are slower and need Google Chrome: run them with `uv run pytest -m ui`.
+markers = ["ui: browser tests with Playwright"]
+addopts = "-m 'not ui'"

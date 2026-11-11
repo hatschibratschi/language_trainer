@@ -14,8 +14,30 @@ Nothing leaves the computer. There are no accounts, subscriptions or cloud APIs.
 ollama pull gemma3:27b        # recommended model (qwen3:14b also works)
 uv run parla-speech           # speech service (2nd terminal); first start downloads ~1.7 GB
 uv run parla                  # opens http://127.0.0.1:7860 in the browser
-uv run pytest                 # run tests
+uv run pytest                 # run tests (unit tests; see "Tests" for the browser tests)
 ```
+
+## Tests
+
+```bash
+uv run pytest                 # unit tests (fast, no browser)
+uv run pytest -m ui           # browser (UI) tests in tests/ui
+```
+
+The **browser tests** live in `tests/ui/` and use [Playwright](https://playwright.dev/python/)
+with the installed Google Chrome (no extra browser download). Always the same setup, defined
+in `tests/ui/conftest.py`:
+
+- Parla is started as a subprocess on **http://127.0.0.1:7871** with a fresh temporary
+  data directory (the real `data/` is never touched) and without a password.
+- Ollama and parla-speech point to an unused port, so the app runs as if the
+  **Mac Mini were off** (banner shown, trainer opened first).
+- Every test runs twice: **phone** (390×844) and **desktop** (1280×800).
+- The `page` fixture waits until the page has finished loading before the test clicks.
+
+New UI tests: add a `test_*.py` in `tests/ui/`, mark it with `pytestmark = pytest.mark.ui`
+and use the `page` fixture. To click something the way a finger does (by position, e.g. an
+icon that lets clicks through), use `page.mouse.click(x, y)` instead of `page.click(selector)`.
 
 Choose a model with `PARLA_MODEL=qwen3:14b uv run parla`. Without this setting the app uses the first
 installed model from `gemma3:27b`, `mistral-small3.2:24b`, `qwen3:14b`, …

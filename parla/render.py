@@ -45,10 +45,11 @@ button.primary:active, button.secondary:active, button.stop:active { transform: 
 #parla-scenario { flex: 0 0 auto !important; width: 9.5em !important; }
 #parla-scenario > div > .wrap { min-height: 0; height: 40px; padding: 0 8px 0 14px; border-radius: 999px; }
 #parla-scenario .wrap-inner { padding: 0; }
-#parla-scenario .secondary-wrap { display: flex; align-items: center; }
-#parla-scenario input { flex: 1 1 auto; min-width: 0; height: auto; padding: 0; margin: 0; font-weight: 700;
+#parla-scenario input { min-width: 0; height: auto; padding: 0 18px 0 0; margin: 0; font-weight: 700;
   text-align: left; text-overflow: ellipsis; }
-#parla-scenario .icon-wrap { position: static; flex: 0 0 auto; width: 16px; margin: 0; transform: none; }
+/* Gradio lays the arrow over the text field and lets clicks through (pointer-events: none),
+   so a click on the arrow opens the list too. Only move it to the right edge. */
+#parla-scenario .icon-wrap { right: 0; width: 16px; }
 @media (max-width: 899px) {
   #parla-restart { padding: 0 10px; }
   #parla-scenario { width: 8.5em !important; }
